@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+    // Automatically redirect to login if session is missing
+    fetch('/api/check-session')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        }
+      });
+  </script>
+  <meta charset="UTF-8">
+  <title>Johannes Deliveries - Admin Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
+    .dashboard-grid { display: flex; gap: 20px; flex-wrap: wrap; }
+    .section { flex: 1; min-width: 300px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    #map { height: 400px; width: 100%; border-radius: 8px; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+    th { background: #007bff; color: white; }
+    .status { font-weight: bold; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <h2>Admin Command Center - Johannes Deliveries</h2>
+  
+  <div class="dashboard-grid">
+    <!-- Left Section: Live Map & Drivers -->
+    <div class="section">
+      <div class="status" id="driverCount">Drivers Online: 0</div>
+      <label>Live Fleet Tracking</label>
+      <div id="map"></div>
+    </div>
+
+    <!-- Right Section: Customer Orders Table -->
+    <div class="section">
+      <div class="status">Incoming Customer Orders</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Pickup</th>
+            <th>Drop-off</th>
+            <th>Item</th>
+          </tr>
+        </thead>
+        <tbody id="ordersTableBody">
+          <!-- Orders will load here dynamically -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const socket = io();
+    const map = L.map('map').setView([-20.1500, 28.5833], 13);
+    let driverMarkers = {};
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // Listen for live fleet updates from drivers
+    socket.on('update_fleet', (drivers) => {
+      document.getElementById('driverCount').innerText = `Drivers Online: ${drivers.length}`;
+      
+      Object.keys(driverMarkers).forEach(id => map.removeLayer(driverMarkers[id]));
+      
+      drivers.forEach(driver => {
+        driverMarkers[driver.driverId] = L.marker([driver.lat, driver.lng])
+          .addTo(map)
+          .bindPopup(`<b>Driver: ${driver.driverId}</b>`)
+          .openPopup();
+      });
+    });
+
+    // Optional: Fetch or listen for incoming orders to populate the table
+    // If you have a socket event or API for orders, it goes here
+  </script>
+</body>
+</html>
