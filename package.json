@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "echo 'No build step required"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
@@ -12,14 +12,11 @@
   "type": "commonjs",
   "dependencies": {
     "@capacitor/android": "8.5.0",
-    "add": "^2.0.9",
-    "android": "^0.0.8",
-    "cap": "^0.2.1",
+    "@capcitor/core": "^8.5.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "mongoose": "^9.9.2",
-    "npx": "^10.2.2",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
