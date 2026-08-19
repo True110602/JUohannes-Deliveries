@@ -1,5 +1,8 @@
 {
   "name": "Johannes Deliveries",
-  "integrations": {},
-  "type": "react"
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react",
+  "webDir": "public"
 }
