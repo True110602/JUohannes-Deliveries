@@ -32,8 +32,10 @@
 
       <label>Password:</label>
       <input type="password" id="password" required placeholder="1234">
-
-      <button type="submit">Login</button>
+<p style="text-align: center; margin-top: 15px;">
+    Don't have an account? <a href="register.html">Register here</a>
+</p>
+       <button type="submit">Login</button>
     </form>
   </div>
 
@@ -46,7 +48,7 @@
       errorDiv.innerText = '';
 
       try {
-        const res = await fetch('https://broiler-slighted-neon.ngrok-free.dev', {
+        const res = await fetch('https://juohannes-deliveries.onrender.com', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })

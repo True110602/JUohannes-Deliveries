@@ -1,3 +1,4 @@
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -61,7 +62,42 @@ app.post('/api/login', (req, res) => {
     message: 'Invalid email or password'
   });
 });
+app.post('/api/register', async (req, res) => {
+    try {
+        const { email, password, address, paymentMethod } = req.body;
+        
+        if (!email || !password || !address || !paymentMethod) {
+            return res.status(400).json({ success: false, message: 'All fields are required' });
+        }
 
+        const filePath = path.join(__dirname, 'users.json');
+        
+        let users = [];
+        if (fs.existsSync(filePath)) {
+            const fileData = fs.readFileSync(filePath, 'utf8');
+            try {
+                users = JSON.parse(fileData);
+            } catch (e) {
+                users = [];
+            }
+        }
+
+        const userExists = users.find(u => u.email === email);
+        if (userExists) {
+            return res.status(400).json({ success: false, message: 'Email already registered' });
+        }
+
+        const newUser = { email, password, address, paymentMethod };
+        users.push(newUser);
+
+        fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+
+        return res.status(200).json({ success: true, message: 'Registration successful!' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: 'Server registration error' });
+    }
+})
 // --- SOCKET.IO REAL-TIME MAP & FLEET TRACKING ---
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
