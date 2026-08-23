@@ -16,7 +16,12 @@ const server = http.createServer(app);
 // server is hosted. Without this, the browser/webview blocks every
 // request the app makes to the API and Socket.IO connections fail.
 const corsOptions = {
-  origin: process.env.CLIENT_ORIGIN || '*', // lock this down to your app's real origin in production
+  // NOTE: origin can't be '*' when credentials: true - browsers reject that
+  // combination outright. process.env.CLIENT_ORIGIN should be set to your
+  // real deployed app origin(s) in production. `true` reflects whatever
+  // Origin the request came from, which is fine for development but should
+  // be tightened before you ship.
+  origin: process.env.CLIENT_ORIGIN || true,
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -67,6 +72,89 @@ if (MONGODB_URI) {
 // --- REAL-TIME DATA STORE ---
 let activeDrivers = [];
 
+// --- ORDERS DATA STORE ---
+// customer.html has an order form with no submit handler, and
+// admin.html has an empty "Incoming Customer Orders" table with a
+// comment saying the wiring goes here - neither side existed. This
+// connects them: customer submits -> server stores + broadcasts ->
+// admin's table updates live over the same socket already used for
+// driver tracking.
+let orders = [];
+let nextOrderId = 1;
+
+app.post('/api/orders', (req, res) => {
+  const { customerName, pickup, dropoff, item } = req.body;
+
+  if (!customerName || !pickup || !dropoff) {
+    return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
+  }
+
+  const newOrder = {
+    id: nextOrderId++,
+    customerName,
+    pickup,
+    dropoff,
+    item: item || '',
+    createdAt: new Date().toISOString()
+  };
+  orders.push(newOrder);
+
+  io.emit('update_orders', orders);
+
+  res.status(201).json({ success: true, order: newOrder });
+});
+
+app.get('/api/orders', (req, res) => {
+  res.json(orders);
+});
+
+// --- CATALOG DATA STORE ---
+// merchant.html, customer.html, and admin.html all call /api/catalog
+// endpoints, but no such routes existed anywhere in the original
+// server.js - this is a minimal in-memory implementation (same
+// pattern as activeDrivers above) so those pages actually work.
+// Swap this for a real Mongoose model whenever you're ready to
+// persist it properly.
+let catalogItems = [];
+let nextCatalogId = 1;
+
+// GET all catalog items
+app.get('/api/catalog', (req, res) => {
+  res.json(catalogItems);
+});
+
+// POST a new catalog item
+app.post('/api/catalog', (req, res) => {
+  const { name, price } = req.body;
+
+  if (!name || price === undefined) {
+    return res.status(400).json({ success: false, message: 'Name and price are required' });
+  }
+
+  const newItem = {
+    id: nextCatalogId++,
+    name,
+    price: parseFloat(price),
+    inStock: true
+  };
+  catalogItems.push(newItem);
+
+  res.status(201).json(newItem);
+});
+
+// PATCH: toggle in-stock status for one item
+app.patch('/api/catalog/:id/stock', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const item = catalogItems.find(i => i.id === id);
+
+  if (!item) {
+    return res.status(404).json({ success: false, message: 'Item not found' });
+  }
+
+  item.inStock = !item.inStock;
+  res.json(item);
+});
+
 // --- API ROUTES ---
 
 // 1. Check if user/driver is logged in
@@ -99,6 +187,16 @@ app.post('/api/login', (req, res) => {
   return res.status(401).json({
     success: false,
     message: 'Invalid email or password'
+  });
+});
+
+// 3. Logout (referenced by driver.html's logout button, but was never defined)
+app.get('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Could not log out' });
+    }
+    res.redirect('/login.html');
   });
 });
 
