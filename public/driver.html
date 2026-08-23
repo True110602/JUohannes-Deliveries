@@ -5,17 +5,19 @@
   <title>Johannes Deliveries - Driver Portal</title>
   
   <!-- Security Check: Redirects to login if not authenticated -->
+  <script src="/js/config.js"></script>
   <script>
-    fetch('/api/check-session')
+    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (!data.loggedIn) {
           window.location.href = '/login.html';
         } else {
           // Automatically display logged-in driver's username
+          // (server's session only stores email/app - there's no "name" field)
           document.addEventListener('DOMContentLoaded', () => {
             const driverInput = document.getElementById('driverId');
-            if (driverInput) driverInput.value = data.user.name;
+            if (driverInput) driverInput.value = data.user.email;
           });
         }
       });
@@ -39,7 +41,7 @@
   <div class="container">
     <div class="nav-bar">
       <h2>Driver Navigation Portal</h2>
-      <button class="logout-btn" onclick="window.location.href='/api/logout'">Logout</button>
+      <button class="logout-btn" onclick="window.location.href=`${API_BASE}/api/logout`">Logout</button>
     </div>
     
     <div class="status-box" id="connectionStatus">Status: Offline</div>
@@ -55,7 +57,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const socket = io();
+    const socket = io(API_BASE || undefined, { withCredentials: true });
     const map = L.map('map').setView([-20.1350, 28.5800], 15);
     let marker = null;
 

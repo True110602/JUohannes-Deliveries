@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script>
+<head>
+  <script src="/js/config.js"></script>
+  <script>
     // Automatically redirect to login if session is missing
-    fetch('/api/check-session')
+    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (!data.loggedIn) {
@@ -88,7 +90,7 @@
     // 2. Load Catalog items from server
     async function loadCustomerCatalog() {
       try {
-        const res = await fetch('/api/catalog');
+        const res = await fetch(`${API_BASE}/api/catalog`, { credentials: 'include' });
         const items = await res.json();
         const container = document.getElementById('customerCatalogList');
         container.innerHTML = '';
@@ -118,6 +120,37 @@
     }
 
     loadCustomerCatalog();
+
+    // 3. Submit the delivery request
+    // (this form existed with no submit handler at all - nothing happened when clicked)
+    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const payload = {
+        customerName: formData.get('customerName'),
+        pickup: formData.get('pickup'),
+        dropoff: formData.get('dropoff')
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          alert('Delivery requested! We\'ll be in touch shortly.');
+          e.target.reset();
+        } else {
+          alert(data.message || 'Could not submit your order.');
+        }
+      } catch (err) {
+        alert('Server connection error.');
+      }
+    });
   </script>
 
 </body>

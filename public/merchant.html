@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script>
+<head>
+  <script src="/js/config.js"></script>
+  <script>
     // Automatically redirect to login if session is missing
-    fetch('/api/check-session')
+    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (!data.loggedIn) {
@@ -43,7 +45,7 @@
 
   <script>
     async function loadCatalog() {
-      const res = await fetch('/api/catalog');
+      const res = await fetch(`${API_BASE}/api/catalog`, { credentials: 'include' });
       const items = await res.json();
       const list = document.getElementById('merchantCatalogList');
       list.innerHTML = '';
@@ -67,9 +69,10 @@
       const name = document.getElementById('itemName').value;
       const price = document.getElementById('itemPrice').value;
 
-      await fetch('/api/catalog', {
+      await fetch(`${API_BASE}/api/catalog`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, price })
       });
 
@@ -78,7 +81,7 @@
     });
 
     async function toggleStock(id) {
-      await fetch(`/api/catalog/${id}/stock`, { method: 'PATCH' });
+      await fetch(`${API_BASE}/api/catalog/${id}/stock`, { method: 'PATCH', credentials: 'include' });
       loadCatalog();
     }
 
