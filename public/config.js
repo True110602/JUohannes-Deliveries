@@ -9,4 +9,4 @@
 // Pointing this at the full deployed URL works for both: the webapp
 // is still same-origin (fetching its own address), and the phone app
 // finally has somewhere real to send requests.
-window.API_BASE = 'https://juohannes-deliveries.onrender.com';
+window.API_BASE = 'https://juohannes-deliveries-2.onrender.com';
