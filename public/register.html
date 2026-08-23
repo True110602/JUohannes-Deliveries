@@ -35,32 +35,37 @@
 </div>
 
 <script>
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    // This finds your form and listens when you click the Register button
+    document.querySelector('form').addEventListener('submit', async function(e) {
         e.preventDefault();
-        const email = document.getElementById('regEmail').value;
-        const password = document.getElementById('regPassword').value;
-        const address = document.getElementById('regAddress').value;
-        const paymentMethod = document.getElementById('regPayment').value;
-        const errorDiv = document.getElementById('regErrorMsg');
         
-        errorDiv.innerText = '';
+        // Grab values from your input boxes (make sure your input IDs match these!)
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const address = document.getElementById('address').value;
+        const paymentMethod = document.getElementById('paymentMethod').value;
 
         try {
-            const res = await fetch('https://juohannes-deliveries.onrender.com', {
+            // THIS IS THE MOST IMPORTANT PART: The full Render link
+            const response = await fetch('https://juohannes-deliveries.onrender.com/api/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ email, password, address, paymentMethod })
             });
 
-            const data = await res.json();
-            if (data.success) {
-                alert('Account created successfully!');
-                window.location.href = 'login.html'; 
+            const data = await response.json();
+            
+            if (response.ok) {
+                alert('Registration successful!');
+                window.location.href = 'login.html'; // Sends you to login page after success
             } else {
-                errorDiv.innerText = data.message || 'Registration failed';
+                alert(data.message || 'Registration failed.');
             }
-        } catch (err) {
-            errorDiv.innerText = 'Server connection error.';
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Server connection error.');
         }
     });
 </script>
