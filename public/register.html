@@ -17,17 +17,23 @@
 <div class="container">
     <h2>Create an Account</h2>
     <form id="registerForm">
+        <label style="font-size: 13px; font-weight: bold; color: #444;">I am registering as a:</label>
+        <select id="regRole" required>
+            <option value="customer">Customer - I want to order deliveries</option>
+            <option value="merchant">Merchant - I want to sell through the app</option>
+        </select>
+
         <input type="email" id="regEmail" placeholder="Email Address" required />
         <input type="password" id="regPassword" placeholder="Password" required />
         <input type="text" id="regAddress" placeholder="Delivery Address" required />
-        
+
         <select id="regPayment" required>
             <option value="">Select Preferred Payment Method</option>
             <option value="Cash">Cash on Delivery</option>
+            <option value="EcoCash">EcoCash</option>
             <option value="Card">Credit/Debit Card</option>
-            <option value="MobileMoney">Mobile Money</option>
         </select>
-        
+
         <button type="submit">Register</button>
     </form>
     <div id="regErrorMsg"></div>
@@ -35,18 +41,24 @@
 </div>
 
 <script src="/js/config.js"></script>
+<script src="/js/ui-helpers.js"></script>
 <script>
-    // This finds your form and listens when you click the Register button
+    document.getElementById('regRole').addEventListener('change', (e) => {
+        const addressField = document.getElementById('regAddress');
+        addressField.placeholder = e.target.value === 'merchant' ? 'Business Address' : 'Delivery Address';
+    });
+
     document.querySelector('form').addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        // Grab values from your input boxes.
-        // NOTE: getElementById is case-sensitive - these ids must exactly
-        // match the input elements' ids above (regEmail, regPassword, etc).
+        const role = document.getElementById('regRole').value;
         const email = document.getElementById('regEmail').value;
         const password = document.getElementById('regPassword').value;
         const address = document.getElementById('regAddress').value;
         const paymentMethod = document.getElementById('regPayment').value;
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+
+        setButtonLoading(submitBtn, true, 'Registering...');
 
         try {
             const response = await fetch(`${API_BASE}/api/register`, {
@@ -54,18 +66,20 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ email, password, address, paymentMethod })
+                body: JSON.stringify({ email, password, address, paymentMethod, role })
             });
 
             const data = await response.json();
-            
+
             if (response.ok) {
                 alert('Registration successful!');
-                window.location.href = 'login.html'; // Sends you to login page after success
+                window.location.href = 'login.html';
             } else {
+                setButtonLoading(submitBtn, false);
                 alert(data.message || 'Registration failed.');
             }
         } catch (error) {
+            setButtonLoading(submitBtn, false);
             console.error('Error:', error);
             alert('Server connection error.');
         }

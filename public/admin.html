@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <script src="/js/config.js"></script>
+<script src="/js/ui-helpers.js"></script>
   <script>
-    // Automatically redirect to login if session is missing
     fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
@@ -25,21 +25,27 @@
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
     th { background: #007bff; color: white; }
     .status { font-weight: bold; margin-bottom: 10px; }
+    .status-badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-assigned { background: #cce5ff; color: #004085; }
+    .status-picked_up { background: #d1ecf1; color: #0c5460; }
+    .status-delivered { background: #d4edda; color: #155724; }
+    .status-cancelled { background: #e2e3e5; color: #383d41; }
+    .status-failed { background: #f8d7da; color: #721c24; }
+    button.small-btn { width: auto; padding: 4px 8px; font-size: 12px; margin-right: 4px; }
   </style>
 </head>
 <body>
 
   <h2>Admin Command Center - Johannes Deliveries</h2>
-  
+
   <div class="dashboard-grid">
-    <!-- Left Section: Live Map & Drivers -->
     <div class="section">
       <div class="status" id="driverCount">Drivers Online: 0</div>
       <label>Live Fleet Tracking</label>
       <div id="map"></div>
     </div>
 
-    <!-- Right Section: Customer Orders Table -->
     <div class="section">
       <div class="status">Incoming Customer Orders</div>
       <table>
@@ -49,10 +55,16 @@
             <th>Pickup</th>
             <th>Drop-off</th>
             <th>Item</th>
+            <th>Amount</th>
+            <th>Driver Earns</th>
+            <th>Payment</th>
+            <th>Status</th>
+            <th>Driver</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="ordersTableBody">
-          <!-- Orders will load here dynamically -->
+          <tr><td colspan="7"><span class="inline-spinner"></span>Loading orders...</td></tr>
         </tbody>
       </table>
     </div>
@@ -63,18 +75,19 @@
     const socket = io(API_BASE || undefined, { withCredentials: true });
     const map = L.map('map').setView([-20.1500, 28.5833], 13);
     let driverMarkers = {};
+    let onlineDriverIds = [];
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // Listen for live fleet updates from drivers
     socket.on('update_fleet', (drivers) => {
       document.getElementById('driverCount').innerText = `Drivers Online: ${drivers.length}`;
-      
+      onlineDriverIds = drivers.map(d => d.driverId);
+
       Object.keys(driverMarkers).forEach(id => map.removeLayer(driverMarkers[id]));
-      
+
       drivers.forEach(driver => {
         driverMarkers[driver.driverId] = L.marker([driver.lat, driver.lng])
           .addTo(map)
@@ -83,22 +96,94 @@
       });
     });
 
-    // Listen for live order updates from the server
-    socket.on('update_orders', (orders) => {
+    function renderOrders(orders) {
       const tbody = document.getElementById('ordersTableBody');
       tbody.innerHTML = '';
 
       orders.forEach(order => {
         const row = document.createElement('tr');
+        const statusLabel = (order.status || 'pending').replace('_', ' ');
+        const paymentLabel = order.paymentMethod === 'EcoCash'
+          ? `EcoCash (${order.ecocashNumber || 'no number'}) - ${order.paymentStatus || 'pending'}`
+          : (order.paymentMethod || 'Cash');
+
         row.innerHTML = `
           <td>${order.customerName}</td>
           <td>${order.pickup}</td>
           <td>${order.dropoff}</td>
           <td>${order.item || '-'}</td>
+          <td>$${(order.amount || 0).toFixed(2)}</td>
+          <td>$${(order.driverCommission || 0).toFixed(2)}</td>
+          <td>${paymentLabel}</td>
+          <td><span class="status-badge status-${order.status || 'pending'}">${statusLabel}</span></td>
+          <td>${order.assignedDriver || '-'}</td>
+          <td>
+            <button class="small-btn" onclick="assignDriver('${order._id}', this)">Assign driver</button>
+            <button class="small-btn" onclick="cycleStatus('${order._id}', '${order.status || 'pending'}', this)">Advance status</button>
+            <button class="small-btn" style="background:#6c757d;" onclick="setOrderStatus('${order._id}', 'cancelled', this)">Cancel</button>
+            <button class="small-btn" style="background:#dc3545;" onclick="setOrderStatus('${order._id}', 'failed', this)">Mark Failed</button>
+          </td>
         `;
         tbody.appendChild(row);
       });
-    });
+    }
+
+    socket.on('update_orders', renderOrders);
+
+    // Load orders once on page load too, in case there were orders
+    // before this admin session connected to the socket.
+    fetch(`${API_BASE}/api/orders`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(renderOrders);
+
+    async function assignDriver(orderId, button) {
+      if (onlineDriverIds.length === 0) {
+        alert('No drivers are currently online to assign.');
+        return;
+      }
+      const driverEmail = prompt(`Assign which driver? Online drivers: ${onlineDriverIds.join(', ')}`);
+      if (!driverEmail) return;
+
+      setButtonLoading(button, true, 'Assigning...');
+      try {
+        await fetch(`${API_BASE}/api/orders/${orderId}/assign`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ driverEmail })
+        });
+      } finally {
+        // The table normally re-renders from the socket update this
+        // triggers, replacing this button entirely - resetting here too
+        // is just a safety net in case that update is slow or doesn't fire.
+        setButtonLoading(button, false);
+      }
+    }
+
+    const statusOrder = ['pending', 'assigned', 'picked_up', 'delivered'];
+
+    async function setOrderStatus(orderId, status, button) {
+      setButtonLoading(button, true, 'Updating...');
+      try {
+        await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ status })
+        });
+      } finally {
+        setButtonLoading(button, false);
+      }
+    }
+
+    async function cycleStatus(orderId, currentStatus, button) {
+      const currentIndex = statusOrder.indexOf(currentStatus);
+      // Cancelled/failed orders aren't in this forward-only list, so
+      // advancing from one of those just leaves it where it is.
+      if (currentIndex === -1) return;
+      const nextStatus = statusOrder[Math.min(currentIndex + 1, statusOrder.length - 1)];
+      await setOrderStatus(orderId, nextStatus, button);
+    }
   </script>
 </body>
 </html>

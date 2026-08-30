@@ -13,61 +13,57 @@
   </style>
 </head>
 <body>
-
   <div class="login-box">
     <h2>Portal Login</h2>
     <div class="hint">
-      <b>Logins:</b><br>
+      <b>Demo logins:</b><br>
       • customer / 1234<br>
       • driver / 1234<br>
       • merchant / 1234<br>
       • admin / 1234
     </div>
-
     <div id="errorMsg" class="error"></div>
-    
+
     <form id="loginForm">
       <label>Username:</label>
       <input type="text" id="username" required placeholder="e.g. driver">
-
       <label>Password:</label>
       <input type="password" id="password" required placeholder="1234">
-
       <button type="submit">Login</button>
     </form>
+    <p style="text-align: center; margin-top: 15px;">Don't have an account? <a href="register.html">Register here</a></p>
   </div>
-
   <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
   <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
       const errorDiv = document.getElementById('errorMsg');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       errorDiv.innerText = '';
-
+      setButtonLoading(submitBtn, true, 'Logging in...');
       try {
-        // These demo logins (customer/driver/merchant/admin) double as the
-        // portal selector - server.js uses "app" to build the redirect URL,
-        // so we send the username as both "app" and "email".
         const res = await fetch(`${API_BASE}/api/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', // required so the session cookie actually gets stored
-          body: JSON.stringify({ app: username, email: username, password })
+          credentials: 'include',
+          body: JSON.stringify({ email: username, password })
         });
-
         const data = await res.json();
         if (data.success) {
+          // Leave the button in its loading state - we're navigating away
           window.location.href = data.redirectUrl;
         } else {
+          setButtonLoading(submitBtn, false);
           errorDiv.innerText = data.message || 'Login failed';
         }
       } catch (err) {
+        setButtonLoading(submitBtn, false);
         errorDiv.innerText = 'Server connection error.';
       }
     });
   </script>
-
 </body>
 </html>
