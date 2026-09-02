@@ -45,15 +45,14 @@
       errorDiv.innerText = '';
       setButtonLoading(submitBtn, true, 'Logging in...');
       try {
-        const res = await fetch(`${API_BASE}/api/login`, {
+        const res = await fetch(`${window.API_BASE}/api/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify({ email: username, password })
         });
         const data = await res.json();
-        if (data.success) {
-          // Leave the button in its loading state - we're navigating away
+        if (data.success && data.token) {
+          setAuthToken(data.token);
           window.location.href = data.redirectUrl;
         } else {
           setButtonLoading(submitBtn, false);
