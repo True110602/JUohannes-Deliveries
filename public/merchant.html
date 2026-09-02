@@ -16,12 +16,17 @@
   <title>Johannes Deliveries - Merchant Portal</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-    .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 4px rgba(0,0,0,0.1); margin: auto; }
-    input, button { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; box-sizing: border-box; }
+    .container { max-width: 650px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: auto; }
+    input, textarea, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; box-sizing: border-box; }
     button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #6c757d; cursor: not-allowed; }
     .item-list { margin-top: 20px; }
-    .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #ddd; }
-    .btn-toggle { width: auto; padding: 5px 10px; margin: 0; font-size: 12px; }
+    .item-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-bottom: 12px; background: #fafafa; display: flex; gap: 15px; align-items: flex-start; }
+    .item-card img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; }
+    .item-info { flex: 1; }
+    .btn-toggle { width: auto; padding: 6px 12px; margin: 4px 0 0 0; font-size: 12px; }
+    .badge { display: inline-block; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px; margin-top: 4px; }
+    .hint { font-size: 12px; color: #666; margin-top: -8px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -36,21 +41,37 @@
       <label>Price (USD):</label>
       <input type="number" id="itemPrice" step="0.01" required placeholder="12.50">
 
-      <button type="submit">Add Item to Catalog</button>
+      <label>Description:</label>
+      <textarea id="itemDescription" rows="2" style="width: 100%; padding: 8px; margin-top: 6px; margin-bottom: 12px;" placeholder="Brief description of the product..."></textarea>
+
+      <label>Image URL:</label>
+      <input type="url" id="itemImageUrl" placeholder="https://example.com/item-photo.jpg">
+
+      <label>Sizes (comma-separated):</label>
+      <input type="text" id="itemSizes" placeholder="Small, Medium, Large">
+
+      <label>Flavors (comma-separated):</label>
+      <input type="text" id="itemFlavors" placeholder="Mild, Hot Piri-Piri, Extra Spicy">
+
+      <label>Colors (comma-separated):</label>
+      <input type="text" id="itemColors" placeholder="Red, Black, Blue">
+      <div class="hint">Leave options blank if they don't apply to this item.</div>
+
+      <button type="submit" id="submitBtn">Add Item to Catalog</button>
     </form>
 
     <h3>Current Catalog</h3>
     <div id="catalogContainer" class="item-list">
-      <span class="inline-spinner"></span> Loading items...
+      Loading items...
     </div>
   </div>
 
   <script>
     async function fetchCatalog() {
+      const container = document.getElementById('catalogContainer');
       try {
         const res = await authFetch(`${window.API_BASE}/api/catalog`);
         const items = await res.json();
-        const container = document.getElementById('catalogContainer');
         container.innerHTML = '';
 
         if (items.length === 0) {
@@ -60,40 +81,68 @@
 
         items.forEach(item => {
           const div = document.createElement('div');
-          div.className = 'item-row';
-          div.innerHTML = `
+          div.className = 'item-card';
+
+          const optionsHtml = (item.optionGroups || []).map(group => `
             <div>
-              <strong>${item.name}</strong> - $${item.price.toFixed(2)} 
-              <span style="color: ${item.inStock ? 'green' : 'red'}">(${item.inStock ? 'In Stock' : 'Out of Stock'})</span>
+              <small><strong>${group.groupName}:</strong> ${group.choices.map(c => `<span class="badge">${c}</span>`).join('')}</small>
             </div>
-            <button class="btn-toggle" onclick="toggleStock('${item._id}', this)">
-              ${item.inStock ? 'Mark Out of Stock' : 'Mark In Stock'}
-            </button>
+          `).join('');
+
+          div.innerHTML = `
+            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.name}" onerror="this.style.display='none'">` : ''}
+            <div class="item-info">
+              <strong>${item.name}</strong> - $${item.price.toFixed(2)}
+              <span style="color: ${item.inStock ? 'green' : 'red'}; font-weight: bold;">(${item.inStock ? 'In Stock' : 'Out of Stock'})</span>
+              ${item.description ? `<p style="font-size:13px; color:#555; margin: 4px 0;">${item.description}</p>` : ''}
+              ${optionsHtml}
+              <button class="btn-toggle" onclick="toggleStock('${item._id}', this)">
+                ${item.inStock ? 'Mark Out of Stock' : 'Mark In Stock'}
+              </button>
+            </div>
           `;
           container.appendChild(div);
         });
       } catch (err) {
-        document.getElementById('catalogContainer').innerHTML = 'Error loading catalog.';
+        container.innerHTML = 'Error loading catalog.';
       }
     }
 
     document.getElementById('addItemForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = document.getElementById('itemName').value;
-      const price = document.getElementById('itemPrice').value;
-      const submitBtn = e.target.querySelector('button[type="submit"]');
+      
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Adding Item...';
 
-      setButtonLoading(submitBtn, true, 'Adding Item...');
+      const optionGroups = [];
+
+      const sizes = document.getElementById('itemSizes').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (sizes.length > 0) optionGroups.push({ groupName: 'Size', choices: sizes });
+
+      const flavors = document.getElementById('itemFlavors').value.split(',').map(f => f.trim()).filter(Boolean);
+      if (flavors.length > 0) optionGroups.push({ groupName: 'Flavor', choices: flavors });
+
+      const colors = document.getElementById('itemColors').value.split(',').map(c => c.trim()).filter(Boolean);
+      if (colors.length > 0) optionGroups.push({ groupName: 'Color', choices: colors });
+
+      const payload = {
+        name: document.getElementById('itemName').value,
+        price: parseFloat(document.getElementById('itemPrice').value),
+        description: document.getElementById('itemDescription').value,
+        imageUrl: document.getElementById('itemImageUrl').value,
+        optionGroups
+      };
 
       try {
         const res = await authFetch(`${window.API_BASE}/api/catalog`, {
           method: 'POST',
-          body: JSON.stringify({ name, price })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
 
         if (res.ok) {
-          document.getElementById('itemName').value = '';
-          document.getElementById('itemPrice').value = '';
+          document.getElementById('addItemForm').reset();
           fetchCatalog();
         } else {
           alert('Failed to add item');
@@ -101,12 +150,13 @@
       } catch (err) {
         alert('Server connection error');
       } finally {
-        setButtonLoading(submitBtn, false);
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Add Item to Catalog';
       }
     });
 
     async function toggleStock(id, button) {
-      setButtonLoading(button, true, 'Updating...');
+      button.disabled = true;
       try {
         const res = await authFetch(`${window.API_BASE}/api/catalog/${id}/stock`, {
           method: 'PATCH'
@@ -118,8 +168,6 @@
         }
       } catch (err) {
         alert('Server error updating stock');
-      } finally {
-        setButtonLoading(button, false);
       }
     }
 
