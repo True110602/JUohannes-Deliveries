@@ -14,7 +14,12 @@ const io = socketIo(server, {
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'johannes_deliveries_secret_key_2026';
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/johannes-deliveries';
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error("FATAL ERROR: MONGO_URI environment variable is not defined on Render!");
+  process.exit(1);
+}
 
 // Middleware
 app.use(cors());
