@@ -2,65 +2,67 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Johannes Deliveries</title>
-  <link rel="icon" type="image/png" href="/assets/favicon-32.png">
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <title>Login - Johannes Deliveries</title>
   <style>
-    body {
-      margin: 0;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, #007bff, #0056b3);
-      font-family: Arial, sans-serif;
-    }
-    .splash {
-      text-align: center;
-      animation: fadeIn 0.5s ease-in;
-    }
-    .splash img {
-      width: 160px;
-      height: 160px;
-      filter: drop-shadow(0 8px 20px rgba(0,0,0,0.25));
-    }
-    .splash h1 {
-      color: #fff;
-      font-size: 26px;
-      margin: 16px 0 4px;
-    }
-    .splash p {
-      color: #d7e9ff;
-      font-size: 14px;
-      margin: 0 0 20px;
-    }
-    .spinner {
-      width: 28px;
-      height: 28px;
-      border: 3px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      margin: 0 auto;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .login-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 320px; }
+    input, button { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; box-sizing: border-box; }
+    button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .error { color: red; font-size: 14px; text-align: center; margin-bottom: 10px; }
+    .hint { font-size: 12px; color: #666; background: #f8f9fa; padding: 8px; border-radius: 4px; margin-bottom: 15px; }
   </style>
 </head>
 <body>
-  <div class="splash">
-    <img src="/assets/icon.svg" alt="Johannes Deliveries">
-    <h1>Johannes Deliveries</h1>
-    <p>Fast, reliable delivery</p>
-    <div class="spinner"></div>
+  <div class="login-box">
+    <h2>Portal Login</h2>
+    <div class="hint">
+      <b>Demo logins:</b><br>
+      • customer / 1234<br>
+      • driver / 1234<br>
+      • merchant / 1234<br>
+      • admin / 1234
+    </div>
+    <div id="errorMsg" class="error"></div>
+
+    <form id="loginForm">
+      <label>Username:</label>
+      <input type="text" id="username" required placeholder="e.g. driver">
+      <label>Password:</label>
+      <input type="password" id="password" required placeholder="1234">
+      <button type="submit">Login</button>
+    </form>
+    <p style="text-align: center; margin-top: 15px;">Don't have an account? <a href="register.html">Register here</a></p>
   </div>
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
   <script>
-    // Brief branded pause before moving on to login - also gives a
-    // Render free-tier cold start a moment to finish waking up instead
-    // of the user staring at a blank white page.
-    setTimeout(() => {
-      window.location.href = '/login.html';
-    }, 1200);
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('errorMsg');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      errorDiv.innerText = '';
+      setButtonLoading(submitBtn, true, 'Logging in...');
+      try {
+        const res = await fetch(`${window.API_BASE}/api/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: username, password })
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+          setAuthToken(data.token);
+          window.location.href = data.redirectUrl;
+        } else {
+          setButtonLoading(submitBtn, false);
+          errorDiv.innerText = data.message || 'Login failed';
+        }
+      } catch (err) {
+        setButtonLoading(submitBtn, false);
+        errorDiv.innerText = 'Server connection error.';
+      }
+    });
   </script>
 </body>
 </html>
