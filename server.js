@@ -3,7 +3,7 @@ const http = require('http');
 const path = require('path');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken'); // Added JWT library
+const jwt = require('jsonwebtoken');
 const { Paynow } = require('paynow');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
@@ -11,7 +11,7 @@ const mongoose = require('mongoose');
 const app = express();
 const server = http.createServer(app);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'johannes-deliveries-jwt-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'johannes-deliveries-secret-key';
 
 // --- CORS ---
 const corsOptions = {
@@ -87,7 +87,6 @@ const driverLocationSchema = new mongoose.Schema({
 }, { timestamps: true });
 const DriverLocation = mongoose.model('DriverLocation', driverLocationSchema);
 
-// Seed initial users
 async function seedDemoUsers() {
   const demoRoles = ['customer', 'driver', 'merchant', 'admin'];
   for (const role of demoRoles) {
@@ -105,7 +104,7 @@ mongoose.connection.once('open', () => {
   seedDemoUsers().catch(err => console.error('Error seeding demo users:', err));
 });
 
-// --- PAYNOW (EcoCash payments) ---
+// --- PAYNOW ---
 const PAYNOW_INTEGRATION_ID = process.env.PAYNOW_INTEGRATION_ID;
 const PAYNOW_INTEGRATION_KEY = process.env.PAYNOW_INTEGRATION_KEY;
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
@@ -118,7 +117,7 @@ if (PAYNOW_INTEGRATION_ID && PAYNOW_INTEGRATION_KEY) {
 }
 
 // =========================================================================
-// JWT AUTH MIDDLEWARE & ROUTES
+// AUTH & MIDDLEWARE
 // =========================================================================
 function requireAuth(allowedRoles) {
   return (req, res, next) => {
@@ -175,7 +174,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Sign JWT token valid for 30 days
     const token = jwt.sign(
       { email: user.email, role: user.role },
       JWT_SECRET,
@@ -398,7 +396,7 @@ app.patch('/api/catalog/:id/stock', requireAuth(['merchant']), async (req, res) 
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =========================================================================
-// SOCKET.IO WITH JWT AUTHENTICATION
+// SOCKET.IO WITH JWT AUTH
 // =========================================================================
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
