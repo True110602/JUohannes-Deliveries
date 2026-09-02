@@ -8,6 +8,7 @@
     .register-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 340px; margin: 20px 0; }
     input, select, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; box-sizing: border-box; }
     button { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+    button:disabled { background: #6c757d; cursor: not-allowed; }
     .error { color: red; font-size: 14px; text-align: center; margin-bottom: 10px; }
     .success { color: green; font-size: 14px; text-align: center; margin-bottom: 10px; }
   </style>
@@ -40,46 +41,52 @@
         <option value="Card">Card</option>
       </select>
 
-      <button type="submit">Create Account</button>
+      <button type="submit" id="submitBtn">Create Account</button>
     </form>
     <p style="text-align: center; margin-top: 15px;">Already have an account? <a href="login.html">Login here</a></p>
   </div>
 
   <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
   <script>
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      
       const formData = new FormData(e.target);
       const payload = Object.fromEntries(formData.entries());
       const msgDiv = document.getElementById('msg');
-      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const submitBtn = document.getElementById('submitBtn');
 
       msgDiv.className = 'error';
       msgDiv.innerText = '';
-      setButtonLoading(submitBtn, true, 'Creating Account...');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Creating Account...';
 
       try {
-        const res = await fetch(`${window.API_BASE}/api/register`, {
+        const baseUrl = window.API_BASE || '';
+        const res = await fetch(`${baseUrl}/api/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
-        setButtonLoading(submitBtn, false);
 
-        if (data.success) {
+        const data = await res.json();
+
+        if (res.ok && data.success) {
           msgDiv.className = 'success';
           msgDiv.innerText = 'Registration successful! Redirecting to login...';
           setTimeout(() => {
             window.location.href = '/login.html';
           }, 1500);
         } else {
-          msgDiv.innerText = data.message || 'Registration failed';
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Create Account';
+          msgDiv.innerText = data.message || 'Registration failed. Please try again.';
         }
       } catch (err) {
-        setButtonLoading(submitBtn, false);
-        msgDiv.innerText = 'Server connection error.';
+        console.error('Registration error:', err);
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Create Account';
+        msgDiv.innerText = 'Server connection error. Please check Render backend status.';
       }
     });
   </script>
