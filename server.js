@@ -40,17 +40,29 @@ const OrderSchema = new mongoose.Schema({
   paymentMethod: String,
   ecocashNumber: String,
   paymentStatus: { type: String, default: 'pending' },
-  status: { type: String, default: 'pending' }, // pending, assigned, picked_up, delivered
+  status: { type: String, default: 'pending' },
   assignedDriver: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const OptionGroupSchema = new mongoose.Schema({
+  groupName: { type: String, required: true },
+  choices: [{ type: String, required: true }]
+});
+
+const CatalogItemSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
+  description: { type: String, default: '' },
+  imageUrl: { type: String, default: '' },
+  inStock: { type: Boolean, default: true },
+  optionGroups: [OptionGroupSchema],
   createdAt: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', UserSchema);
 const Order = mongoose.model('Order', OrderSchema);
-
-// Catalog Routes
-const catalogRoutes = require('./routes/catalog');
-app.use('/api/catalog', catalogRoutes);
+const CatalogItem = mongoose.model('CatalogItem', CatalogItemSchema);
 
 // Auth Middleware
 function authenticateToken(req, res, next) {
@@ -72,11 +84,10 @@ app.get('/api/check-session', authenticateToken, (req, res) => {
   res.json({ loggedIn: true, user: req.user });
 });
 
-// 2. User Registration
+// 2. Registration
 app.post('/api/register', async (req, res) => {
   try {
     const { email, password, role, address, paymentMethod } = req.body;
-    
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Username or email already exists.' });
@@ -98,7 +109,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// 3. User Login
+// 3. Login
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -136,7 +147,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 4. Seed Demo Users Endpoint
+// 4. Seed Demo Users
 app.post('/api/seed-demo-users', async (req, res) => {
   try {
     const demoUsers = [
@@ -155,14 +166,55 @@ app.post('/api/seed-demo-users', async (req, res) => {
       );
     }
 
-    res.json({ success: true, message: 'Demo logins restored successfully! You can now log in with customer, driver, merchant, admin using password "1234".' });
+    res.json({ success: true, message: 'Demo logins restored successfully! Login with password "1234".' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 5. Orders API
-app.get('/api/orders', authenticateToken, async (req, res) => {
+// 5. Catalog Routes
+app.get('/api/catalog', async (req, res) => {
+  try {
+    const items = await CatalogItem.find().sort({ createdAt: -1 });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/catalog', async (req, res) => {
+  try {
+    const { name, price, description, imageUrl, optionGroups } = req.body;
+    const newItem = new CatalogItem({
+      name,
+      price,
+      description,
+      imageUrl,
+      optionGroups: optionGroups || []
+    });
+
+    await newItem.save();
+    res.status(201).json(newItem);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.patch('/api/catalog/:id/stock', async (req, res) => {
+  try {
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+
+    item.inStock = !item.inStock;
+    await item.save();
+    res.json(item);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 6. Orders Routes
+app.get('/api/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.json(orders);
@@ -171,12 +223,11 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/orders', authenticateToken, async (req, res) => {
+app.post('/api/orders', async (req, res) => {
   try {
     const newOrder = new Order(req.body);
     await newOrder.save();
     
-    // Broadcast updated orders list
     const orders = await Order.find().sort({ createdAt: -1 });
     io.emit('update_orders', orders);
 
@@ -186,7 +237,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
-app.patch('/api/orders/:id/assign', authenticateToken, async (req, res) => {
+app.patch('/api/orders/:id/assign', async (req, res) => {
   try {
     const { driverEmail } = req.body;
     const order = await Order.findByIdAndUpdate(
@@ -204,7 +255,7 @@ app.patch('/api/orders/:id/assign', authenticateToken, async (req, res) => {
   }
 });
 
-app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
+app.patch('/api/orders/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
     const order = await Order.findByIdAndUpdate(
@@ -222,16 +273,7 @@ app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/orders/:id/payment-status', authenticateToken, async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id);
-    res.json({ paymentStatus: order ? order.paymentStatus : 'pending' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Live Driver Fleet Socket Tracking
+// 7. Live Driver Fleet Tracking via WebSockets
 let activeDrivers = {};
 
 io.on('connection', (socket) => {
@@ -255,10 +297,10 @@ mongoose.connect(MONGO_URI)
   .then(async () => {
     console.log('MongoDB connected successfully');
     
-    // Auto-seed demo accounts on initial launch if empty
+    // Auto-seed demo accounts if the database is brand new
     const count = await User.countDocuments();
     if (count === 0) {
-      console.log('Seeding initial demo accounts...');
+      console.log('Seeding demo accounts...');
       const demoUsers = [
         { email: 'customer', password: '1234', role: 'customer' },
         { email: 'driver', password: '1234', role: 'driver' },
