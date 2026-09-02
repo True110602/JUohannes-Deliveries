@@ -4,59 +4,46 @@
   <meta charset="UTF-8">
   <title>Johannes Deliveries - Driver Portal</title>
   
-  <!-- Security Check: Redirects to login if not authenticated -->
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
   <script>
-    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
+    authFetch(`${window.API_BASE}/api/check-session`)
       .then(res => res.json())
       .then(data => {
         if (!data.loggedIn) {
           window.location.href = '/login.html';
         } else {
-          // By the time this fetch resolves, the page has almost certainly
-          // already finished parsing - waiting for DOMContentLoaded here
-          // means listening for an event that already happened, so the
-          // field never gets filled in. Just set it directly instead.
           const driverInput = document.getElementById('driverId');
           if (driverInput) driverInput.value = data.user.email;
         }
       });
+
+    function logoutDriver() {
+      clearAuthToken();
+      window.location.href = '/login.html';
+    }
   </script>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="/socket.io/socket.io.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-    .page-layout { max-width: 950px; margin: auto; display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
-    .container { flex: 2; min-width: 320px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 4px rgba(0,0,0,0.1); }
+    .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 4px rgba(0,0,0,0.1); margin: auto; }
     input, button { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; box-sizing: border-box; }
     button { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
     #map { width: 100%; height: 350px; border-radius: 8px; margin-top: 10px; }
     .status-box { padding: 10px; background: #e9ecef; border-radius: 4px; margin-bottom: 15px; text-align: center; font-weight: bold; }
     .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
     .logout-btn { background: #dc3545; width: auto; padding: 6px 12px; }
-
-    /* Stats sidebar */
-    .sidebar { flex: 1; min-width: 240px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 4px rgba(0,0,0,0.1); }
-    .sidebar h3 { margin-top: 0; font-size: 16px; }
-    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
-    .stat-row:last-child { border-bottom: none; }
-    .stat-label { color: #555; }
-    .stat-value { font-weight: bold; }
-    .stat-earned { color: #28a745; font-size: 20px; }
-    .stat-earned-label { font-size: 13px; color: #555; margin-bottom: 2px; }
-    .stat-highlight-box { background: #eef7ee; border-radius: 6px; padding: 12px; margin-bottom: 15px; text-align: center; }
   </style>
 </head>
 <body>
 
-  <div class="page-layout">
   <div class="container">
     <div class="nav-bar">
       <h2>Driver Navigation Portal</h2>
-      <button class="logout-btn" onclick="window.location.href=`${API_BASE}/api/logout`">Logout</button>
+      <button class="logout-btn" onclick="logoutDriver()">Logout</button>
     </div>
     
     <div class="status-box" id="connectionStatus">Status: Offline</div>
@@ -70,26 +57,11 @@
     <div id="map"></div>
   </div>
 
-  <div class="sidebar">
-    <h3>Your Stats</h3>
-    <div class="stat-highlight-box">
-      <div class="stat-earned-label">Total Earned (10% commission)</div>
-      <div class="stat-earned" id="statEarned">$0.00</div>
-    </div>
-    <div class="stat-row"><span class="stat-label">Total Orders</span><span class="stat-value" id="statTotal">0</span></div>
-    <div class="stat-row"><span class="stat-label">Pending</span><span class="stat-value" id="statPending">0</span></div>
-    <div class="stat-row"><span class="stat-label">Picked Up</span><span class="stat-value" id="statPickedUp">0</span></div>
-    <div class="stat-row"><span class="stat-label">Delivered</span><span class="stat-value" id="statDelivered">0</span></div>
-    <div class="stat-row"><span class="stat-label">Cancelled</span><span class="stat-value" id="statCancelled">0</span></div>
-    <div class="stat-row"><span class="stat-label">Failed</span><span class="stat-value" id="statFailed">0</span></div>
-    <div class="stat-row"><span class="stat-label">Completion Rate</span><span class="stat-value" id="statCompletionRate">0%</span></div>
-  </div>
-  </div>
-
-
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const socket = io(API_BASE || undefined, { withCredentials: true });
+    const socket = io(window.API_BASE || undefined, {
+      auth: { token: getAuthToken() }
+    });
     const map = L.map('map').setView([-20.1350, 28.5800], 15);
     let marker = null;
 
@@ -99,53 +71,6 @@
     }).addTo(map);
 
     let hasFirstFix = false;
-
-    // --- Driver stats sidebar ---
-    // Orders are broadcast to every connected client (admin, customers,
-    // drivers) over the same socket already used for GPS - we just filter
-    // down to the ones assigned to this driver and count them up.
-    function renderDriverStats(allOrders) {
-      const myEmail = document.getElementById('driverId').value;
-      if (!myEmail) return;
-
-      const myOrders = allOrders.filter(o => o.assignedDriver === myEmail);
-
-      const counts = { pending: 0, assigned: 0, picked_up: 0, delivered: 0, cancelled: 0, failed: 0 };
-      let earned = 0;
-
-      myOrders.forEach(o => {
-        const status = o.status || 'pending';
-        if (counts[status] !== undefined) counts[status]++;
-        if (status === 'delivered') earned += (o.driverCommission || 0);
-      });
-
-      const total = myOrders.length;
-      const finished = counts.delivered + counts.cancelled + counts.failed;
-      const completionRate = finished > 0 ? Math.round((counts.delivered / finished) * 100) : 0;
-
-      document.getElementById('statEarned').innerText = `$${earned.toFixed(2)}`;
-      document.getElementById('statTotal').innerText = total;
-      // "Pending" here covers orders assigned to this driver that haven't
-      // been picked up yet.
-      document.getElementById('statPending').innerText = counts.pending + counts.assigned;
-      document.getElementById('statPickedUp').innerText = counts.picked_up;
-      document.getElementById('statDelivered').innerText = counts.delivered;
-      document.getElementById('statCancelled').innerText = counts.cancelled;
-      document.getElementById('statFailed').innerText = counts.failed;
-      document.getElementById('statCompletionRate').innerText = `${completionRate}%`;
-    }
-
-    socket.on('update_orders', renderDriverStats);
-
-    // Initial load, in case orders already existed before this driver
-    // connected to the socket. Give the check-session fetch in <head> a
-    // moment to populate the driverId field first.
-    setTimeout(() => {
-      fetch(`${API_BASE}/api/orders`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(renderDriverStats)
-        .catch(() => {});
-    }, 500);
 
     function startTracking(button) {
       const driverId = document.getElementById('driverId').value;
@@ -159,10 +84,6 @@
       document.getElementById('connectionStatus').style.background = "#e9ecef";
       document.getElementById('connectionStatus').style.color = "#333";
 
-      // watchLocation (from /js/geo-helpers.js) handles the Capacitor
-      // native permission flow on Android, with a browser fallback for
-      // testing - shared with the "Use my location" button on the
-      // customer page so both behave identically.
       watchLocation(
         (lat, lng) => {
           if (!hasFirstFix) {
