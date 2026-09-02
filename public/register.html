@@ -1,90 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Johannes Deliveries - Register</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f4f4f9; }
-        .container { max-width: 400px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); margin: auto; }
-        input, select, button { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
-        button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #regErrorMsg { color: red; text-align: center; font-size: 14px; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Register - Johannes Deliveries</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    .register-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 340px; margin: 20px 0; }
+    input, select, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; box-sizing: border-box; }
+    button { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+    .error { color: red; font-size: 14px; text-align: center; margin-bottom: 10px; }
+    .success { color: green; font-size: 14px; text-align: center; margin-bottom: 10px; }
+  </style>
 </head>
 <body>
+  <div class="register-box">
+    <h2>Create Account</h2>
+    <div id="msg" class="error"></div>
 
-<div class="container">
-    <h2>Create an Account</h2>
     <form id="registerForm">
-        <label style="font-size: 13px; font-weight: bold; color: #444;">I am registering as a:</label>
-        <select id="regRole" required>
-            <option value="customer">Customer - I want to order deliveries</option>
-            <option value="merchant">Merchant - I want to sell through the app</option>
-        </select>
+      <label>Account Type:</label>
+      <select name="role" required>
+        <option value="customer">Customer</option>
+        <option value="merchant">Merchant / Restaurant</option>
+      </select>
 
-        <input type="email" id="regEmail" placeholder="Email Address" required />
-        <input type="password" id="regPassword" placeholder="Password" required />
-        <input type="text" id="regAddress" placeholder="Delivery Address" required />
+      <label>Email Address:</label>
+      <input type="email" name="email" required placeholder="name@example.com">
 
-        <select id="regPayment" required>
-            <option value="">Select Preferred Payment Method</option>
-            <option value="Cash">Cash on Delivery</option>
-            <option value="EcoCash">EcoCash</option>
-            <option value="Card">Credit/Debit Card</option>
-        </select>
+      <label>Password:</label>
+      <input type="password" name="password" required placeholder="••••••••">
 
-        <button type="submit">Register</button>
+      <label>Physical Address:</label>
+      <input type="text" name="address" required placeholder="e.g. 12 Main St, Bulawayo">
+
+      <label>Preferred Payment Method:</label>
+      <select name="paymentMethod" required>
+        <option value="Cash">Cash on Delivery</option>
+        <option value="EcoCash">EcoCash</option>
+        <option value="Card">Card</option>
+      </select>
+
+      <button type="submit">Create Account</button>
     </form>
-    <div id="regErrorMsg"></div>
     <p style="text-align: center; margin-top: 15px;">Already have an account? <a href="login.html">Login here</a></p>
-</div>
+  </div>
 
-<script src="/js/config.js"></script>
-<script src="/js/ui-helpers.js"></script>
-<script>
-    document.getElementById('regRole').addEventListener('change', (e) => {
-        const addressField = document.getElementById('regAddress');
-        addressField.placeholder = e.target.value === 'merchant' ? 'Business Address' : 'Delivery Address';
-    });
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <script>
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const payload = Object.fromEntries(formData.entries());
+      const msgDiv = document.getElementById('msg');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
 
-    document.querySelector('form').addEventListener('submit', async function(e) {
-        e.preventDefault();
+      msgDiv.className = 'error';
+      msgDiv.innerText = '';
+      setButtonLoading(submitBtn, true, 'Creating Account...');
 
-        const role = document.getElementById('regRole').value;
-        const email = document.getElementById('regEmail').value;
-        const password = document.getElementById('regPassword').value;
-        const address = document.getElementById('regAddress').value;
-        const paymentMethod = document.getElementById('regPayment').value;
-        const submitBtn = e.target.querySelector('button[type="submit"]');
+      try {
+        const res = await fetch(`${window.API_BASE}/api/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        setButtonLoading(submitBtn, false);
 
-        setButtonLoading(submitBtn, true, 'Registering...');
-
-        try {
-            const response = await fetch(`${API_BASE}/api/register`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email, password, address, paymentMethod, role })
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                alert('Registration successful!');
-                window.location.href = 'login.html';
-            } else {
-                setButtonLoading(submitBtn, false);
-                alert(data.message || 'Registration failed.');
-            }
-        } catch (error) {
-            setButtonLoading(submitBtn, false);
-            console.error('Error:', error);
-            alert('Server connection error.');
+        if (data.success) {
+          msgDiv.className = 'success';
+          msgDiv.innerText = 'Registration successful! Redirecting to login...';
+          setTimeout(() => {
+            window.location.href = '/login.html';
+          }, 1500);
+        } else {
+          msgDiv.innerText = data.message || 'Registration failed';
         }
+      } catch (err) {
+        setButtonLoading(submitBtn, false);
+        msgDiv.innerText = 'Server connection error.';
+      }
     });
-</script>
-
+  </script>
 </body>
 </html>
