@@ -1,439 +1,301 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { Paynow } = require('paynow');
-const { Server } = require('socket.io');
-const mongoose = require('mongoose');
-
-const app = express();
-const server = http.createServer(app);
-
-const JWT_SECRET = process.env.JWT_SECRET || 'johannes-deliveries-secret-key';
-
-// --- CORS ---
-const corsOptions = {
-  origin: process.env.CLIENT_ORIGIN || true,
-  credentials: true
-};
-app.use(cors(corsOptions));
-
-const io = new Server(server, {
-  cors: corsOptions
-});
-
-// --- MIDDLEWARE SETUP ---
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// =========================================================================
-// DATABASE CONNECTION
-// =========================================================================
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  console.error('MONGODB_URI is not set. Set MONGODB_URI in your environment variables.');
-  process.exit(1);
-}
-
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
-
-// =========================================================================
-// MODELS
-// =========================================================================
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  passwordHash: { type: String, required: true },
-  role: { type: String, enum: ['customer', 'driver', 'merchant', 'admin'], required: true },
-  address: { type: String, default: '' },
-  paymentMethod: { type: String, default: '' }
-}, { timestamps: true });
-const User = mongoose.model('User', userSchema);
-
-const orderSchema = new mongoose.Schema({
-  customerName: { type: String, required: true },
-  pickup: { type: String, required: true },
-  dropoff: { type: String, required: true },
-  item: { type: String, default: '' },
-  amount: { type: Number, default: 0 },
-  status: { type: String, enum: ['pending', 'assigned', 'picked_up', 'delivered'], default: 'pending' },
-  assignedDriver: { type: String, default: null },
-  paymentMethod: { type: String, default: 'Cash' },
-  ecocashNumber: { type: String, default: null },
-  paymentStatus: { type: String, default: 'n/a' },
-  paynowPollUrl: { type: String, default: null },
-  paynowInstructions: { type: String, default: null }
-}, { timestamps: true });
-const Order = mongoose.model('Order', orderSchema);
-
-const catalogItemSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  inStock: { type: Boolean, default: true }
-}, { timestamps: true });
-const CatalogItem = mongoose.model('CatalogItem', catalogItemSchema);
-
-const driverLocationSchema = new mongoose.Schema({
-  driverId: { type: String, required: true, unique: true },
-  lat: Number,
-  lng: Number
-}, { timestamps: true });
-const DriverLocation = mongoose.model('DriverLocation', driverLocationSchema);
-
-async function seedDemoUsers() {
-  const demoRoles = ['customer', 'driver', 'merchant', 'admin'];
-  for (const role of demoRoles) {
-    const exists = await User.findOne({ email: role });
-    if (!exists) {
-      await User.create({
-        email: role,
-        passwordHash: bcrypt.hashSync('1234', 10),
-        role: role
-      });
-    }
-  }
-}
-mongoose.connection.once('open', () => {
-  seedDemoUsers().catch(err => console.error('Error seeding demo users:', err));
-});
-
-// --- PAYNOW ---
-const PAYNOW_INTEGRATION_ID = process.env.PAYNOW_INTEGRATION_ID;
-const PAYNOW_INTEGRATION_KEY = process.env.PAYNOW_INTEGRATION_KEY;
-const PUBLIC_URL = process.env.PUBLIC_URL || '';
-
-let paynow = null;
-if (PAYNOW_INTEGRATION_ID && PAYNOW_INTEGRATION_KEY) {
-  paynow = new Paynow(PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY);
-  paynow.resultUrl = `${PUBLIC_URL}/api/payments/paynow-result`;
-  paynow.returnUrl = `${PUBLIC_URL}/customer.html`;
-}
-
-// =========================================================================
-// AUTH & MIDDLEWARE
-// =========================================================================
-function requireAuth(allowedRoles) {
-  return (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Not logged in' });
-    }
-
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      req.user = decoded;
-
-      if (allowedRoles && !allowedRoles.includes(decoded.role)) {
-        return res.status(403).json({ success: false, message: 'Forbidden' });
-      }
-      next();
-    } catch (err) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-    }
-  };
-}
-
-app.get('/api/check-session', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.json({ loggedIn: false });
-  }
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    res.json({ loggedIn: true, user: decoded });
-  } catch (err) {
-    res.json({ loggedIn: false });
-  }
-});
-
-app.post('/api/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatches) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    const token = jwt.sign(
-      { email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-
-    return res.json({
-      success: true,
-      message: 'Login successful',
-      token,
-      redirectUrl: `/${user.role}.html`
-    });
-  } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ success: false, message: 'Server error during login' });
-  }
-});
-
-app.post('/api/register', async (req, res) => {
-  try {
-    const { email, password, address, paymentMethod, role } = req.body;
-
-    if (!email || !password || !address || !paymentMethod) {
-      return res.status(400).json({ success: false, message: 'All fields are required' });
-    }
-
-    const allowedSelfRegisterRoles = ['customer', 'merchant'];
-    const chosenRole = allowedSelfRegisterRoles.includes(role) ? role : 'customer';
-
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ success: false, message: 'Email already registered' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    await User.create({ email, passwordHash, role: chosenRole, address, paymentMethod });
-
-    return res.status(200).json({ success: true, message: 'Registration successful!' });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server registration error' });
-  }
-});
-
-// =========================================================================
-// ORDERS
-// =========================================================================
-app.post('/api/orders', async (req, res) => {
-  try {
-    const { customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, amount } = req.body;
-
-    if (!customerName || !pickup || !dropoff) {
-      return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
-    }
-
-    const orderAmount = parseFloat(amount) || 0;
-    const order = new Order({
-      customerName,
-      pickup,
-      dropoff,
-      item: item || '',
-      amount: orderAmount,
-      paymentMethod: paymentMethod || 'Cash',
-      ecocashNumber: ecocashNumber || null
-    });
-
-    if (paymentMethod === 'EcoCash') {
-      if (!paynow) {
-        order.paymentStatus = 'not_configured';
-      } else {
-        try {
-          const customerEmail = (req.user && req.user.email) || 'customer@example.com';
-          const payment = paynow.createPayment(`Order-${order._id}`, customerEmail);
-          payment.add(item || 'Delivery order', orderAmount);
-
-          const response = await paynow.sendMobile(payment, ecocashNumber, 'ecocash');
-
-          if (response.success) {
-            order.paymentStatus = 'pending';
-            order.paynowPollUrl = response.pollUrl;
-            order.paynowInstructions = response.instructions;
-          } else {
-            order.paymentStatus = 'failed';
-            order.paynowInstructions = response.error;
-          }
-        } catch (err) {
-          order.paymentStatus = 'failed';
-          order.paynowInstructions = 'Could not reach Paynow. Please try again.';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <script>
+    authFetch(`${window.API_BASE}/api/check-session`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
         }
+      });
+  </script>
+  <meta charset="UTF-8">
+  <title>Johannes Deliveries - Merchant Portal</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f9; display: flex; min-height: 100vh; }
+    
+    /* Sidebar Layout */
+    .sidebar { width: 280px; background: #1e293b; color: white; padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-shrink: 0; }
+    .sidebar-profile { text-align: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+    .profile-img { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #007bff; margin-bottom: 10px; background: #334155; }
+    .sidebar h3 { font-size: 16px; margin: 0 0 10px 0; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    /* Stats Widget */
+    .stat-card { background: #334155; padding: 12px; border-radius: 6px; margin-bottom: 10px; }
+    .stat-card .label { font-size: 12px; color: #cbd5e1; }
+    .stat-card .value { font-size: 20px; font-weight: bold; color: #22c55e; margin-top: 4px; }
+    
+    /* Main Content Area */
+    .main-content { flex: 1; padding: 30px; overflow-y: auto; }
+    .container { max-width: 700px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: auto; }
+    
+    input, textarea, select, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; }
+    button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #6c757d; cursor: not-allowed; }
+    
+    .sidebar input, .sidebar button { font-size: 12px; padding: 8px; margin-bottom: 8px; }
+    .sidebar button { background: #0d9488; margin-top: 4px; }
+
+    /* Catalog Cards */
+    .item-list { margin-top: 20px; }
+    .item-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-bottom: 12px; background: #fafafa; display: flex; gap: 15px; align-items: flex-start; }
+    .item-card img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; }
+    .item-info { flex: 1; }
+    .btn-toggle { width: auto; padding: 6px 12px; margin: 4px 0 0 0; font-size: 12px; }
+    .badge { display: inline-block; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px; margin-top: 4px; }
+    .hint { font-size: 12px; color: #666; margin-top: -8px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- Left Sidebar Navigation -->
+  <div class="sidebar">
+    <div class="sidebar-profile">
+      <img id="profilePicDisplay" class="profile-img" src="https://via.placeholder.com/90?text=Merchant" alt="Profile Picture" onerror="this.src='https://via.placeholder.com/90?text=Merchant'">
+      <h4 id="merchantEmailText" style="margin: 0; font-size: 14px; color: #f8fafc;">Merchant Account</h4>
+      
+      <div style="margin-top: 10px;">
+        <input type="url" id="profilePicUrlInput" placeholder="Profile Image URL">
+        <button type="button" onclick="updateProfilePic()">Update Photo</button>
+      </div>
+    </div>
+
+    <!-- Sales & Earnings Stats -->
+    <div>
+      <h3>Performance</h3>
+      <div class="stat-card">
+        <div class="label">Total Sales Made</div>
+        <div class="value" id="statSalesCount">0 orders</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Revenue Earned</div>
+        <div class="value" id="statRevenueAmount">$0.00</div>
+      </div>
+    </div>
+
+    <!-- Bank Details Form -->
+    <div>
+      <h3>Payment / Bank Details</h3>
+      <form id="bankDetailsForm">
+        <input type="text" id="bankName" placeholder="Bank Name (e.g. CABS, FBC)" required>
+        <input type="text" id="accountName" placeholder="Account Holder Name" required>
+        <input type="text" id="accountNumber" placeholder="Account Number / EcoCash" required>
+        <button type="submit" id="saveBankBtn">Save Payment Details</button>
+      </form>
+      <div id="bankMsg" style="font-size: 11px; text-align: center;"></div>
+    </div>
+  </div>
+
+  <!-- Main Catalog Manager Content -->
+  <div class="main-content">
+    <div class="container">
+      <h2>Merchant Catalog Manager</h2>
+      
+      <form id="addItemForm">
+        <label>Item Name:</label>
+        <input type="text" id="itemName" required placeholder="e.g. Mozambican Piri-Piri Chicken">
+        
+        <label>Price (USD):</label>
+        <input type="number" id="itemPrice" step="0.01" required placeholder="12.50">
+
+        <label>Description:</label>
+        <textarea id="itemDescription" rows="2" style="width: 100%; padding: 8px; margin-top: 6px; margin-bottom: 12px;" placeholder="Brief description of the product..."></textarea>
+
+        <label>Image URL:</label>
+        <input type="url" id="itemImageUrl" placeholder="https://example.com/item-photo.jpg">
+
+        <label>Sizes (comma-separated):</label>
+        <input type="text" id="itemSizes" placeholder="Small, Medium, Large">
+
+        <label>Flavors (comma-separated):</label>
+        <input type="text" id="itemFlavors" placeholder="Mild, Hot Piri-Piri, Extra Spicy">
+
+        <label>Colors (comma-separated):</label>
+        <input type="text" id="itemColors" placeholder="Red, Black, Blue">
+        <div class="hint">Leave options blank if they don't apply to this item.</div>
+
+        <button type="submit" id="submitBtn">Add Item to Catalog</button>
+      </form>
+
+      <h3>Current Catalog</h3>
+      <div id="catalogContainer" class="item-list">
+        Loading items...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Fetch merchant sales stats and bank details on initial load
+    async function loadMerchantDashboard() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/orders`);
+        if (res.ok) {
+          const orders = await res.json();
+          const completedOrders = orders.filter(o => o.status === 'delivered');
+          
+          document.getElementById('statSalesCount').innerText = `${completedOrders.length} orders`;
+          
+          const totalRevenue = completedOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+          document.getElementById('statRevenueAmount').innerText = `$${totalRevenue.toFixed(2)}`;
+        }
+      } catch (err) {
+        console.error('Error loading dashboard stats:', err);
+      }
+
+      // Load saved profile picture & bank details from LocalStorage fallback
+      const savedPic = localStorage.getItem('merchant_profile_pic');
+      if (savedPic) {
+        document.getElementById('profilePicDisplay').src = savedPic;
+        document.getElementById('profilePicUrlInput').value = savedPic;
+      }
+
+      const savedBank = JSON.parse(localStorage.getItem('merchant_bank_details') || '{}');
+      if (savedBank.bankName) document.getElementById('bankName').value = savedBank.bankName;
+      if (savedBank.accountName) document.getElementById('accountName').value = savedBank.accountName;
+      if (savedBank.accountNumber) document.getElementById('accountNumber').value = savedBank.accountNumber;
+    }
+
+    // Profile Picture Update Handler
+    function updateProfilePic() {
+      const url = document.getElementById('profilePicUrlInput').value.trim();
+      if (url) {
+        document.getElementById('profilePicDisplay').src = url;
+        localStorage.setItem('merchant_profile_pic', url);
+        alert('Profile picture updated successfully!');
       }
     }
 
-    await order.save();
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    // Bank Details Save Handler
+    document.getElementById('bankDetailsForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const bankDetails = {
+        bankName: document.getElementById('bankName').value,
+        accountName: document.getElementById('accountName').value,
+        accountNumber: document.getElementById('accountNumber').value
+      };
 
-    res.status(201).json({ success: true, order });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error creating order' });
-  }
-});
+      localStorage.setItem('merchant_bank_details', JSON.stringify(bankDetails));
+      const msg = document.getElementById('bankMsg');
+      msg.style.color = '#22c55e';
+      msg.innerText = 'Bank details saved successfully!';
+      setTimeout(() => { msg.innerText = ''; }, 3000);
+    });
 
-app.get('/api/orders', async (req, res) => {
-  try {
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    res.json(allOrders);
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error fetching orders' });
-  }
-});
+    // Fetch and display menu items
+    async function fetchCatalog() {
+      const container = document.getElementById('catalogContainer');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog`);
+        const items = await res.json();
+        container.innerHTML = '';
 
-app.patch('/api/orders/:id/assign', requireAuth(['admin']), async (req, res) => {
-  try {
-    const { driverEmail } = req.body;
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+        if (items.length === 0) {
+          container.innerHTML = '<i>No catalog items found. Add your first item above!</i>';
+          return;
+        }
 
-    order.assignedDriver = driverEmail;
-    order.status = 'assigned';
-    await order.save();
+        items.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'item-card';
 
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
-    res.json({ success: true, order });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error assigning driver' });
-  }
-});
+          const optionsHtml = (item.optionGroups || []).map(group => `
+            <div>
+              <small><strong>${group.groupName}:</strong> ${group.choices.map(c => `<span class="badge">${c}</span>`).join('')}</small>
+            </div>
+          `).join('');
 
-app.patch('/api/orders/:id/status', requireAuth(['admin', 'driver']), async (req, res) => {
-  try {
-    const { status } = req.body;
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-
-    order.status = status;
-    await order.save();
-
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
-    res.json({ success: true, order });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error updating status' });
-  }
-});
-
-app.get('/api/orders/:id/payment-status', requireAuth(), async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-    if (!order.paynowPollUrl || !paynow) {
-      return res.json({ success: true, paymentStatus: order.paymentStatus });
-    }
-
-    const status = await paynow.pollTransaction(order.paynowPollUrl);
-    order.paymentStatus = status.paid() ? 'paid' : (status.status || order.paymentStatus).toLowerCase();
-    await order.save();
-
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
-    res.json({ success: true, paymentStatus: order.paymentStatus });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Could not check payment status' });
-  }
-});
-
-app.post('/api/payments/paynow-result', async (req, res) => {
-  try {
-    const { reference, status } = req.body;
-    const match = /^Order-([a-f0-9]+)$/.exec(reference || '');
-
-    if (match) {
-      const order = await Order.findById(match[1]);
-      if (order) {
-        order.paymentStatus = (status || '').toLowerCase() || order.paymentStatus;
-        await order.save();
-        const allOrders = await Order.find().sort({ createdAt: -1 });
-        io.emit('update_orders', allOrders);
+          div.innerHTML = `
+            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.name}" onerror="this.style.display='none'">` : ''}
+            <div class="item-info">
+              <strong>${item.name}</strong> - $${item.price.toFixed(2)}
+              <span style="color: ${item.inStock ? 'green' : 'red'}; font-weight: bold;">(${item.inStock ? 'In Stock' : 'Out of Stock'})</span>
+              ${item.description ? `<p style="font-size:13px; color:#555; margin: 4px 0;">${item.description}</p>` : ''}
+              ${optionsHtml}
+              <button class="btn-toggle" onclick="toggleStock('${item._id}', this)">
+                ${item.inStock ? 'Mark Out of Stock' : 'Mark In Stock'}
+              </button>
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = 'Error loading catalog.';
       }
     }
-    res.sendStatus(200);
-  } catch (err) {
-    res.sendStatus(200);
-  }
-});
 
-// =========================================================================
-// CATALOG & STATIC FILES
-// =========================================================================
-app.get('/api/catalog', async (req, res) => {
-  try {
-    const items = await CatalogItem.find().sort({ createdAt: 1 });
-    res.json(items);
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error fetching catalog' });
-  }
-});
+    // Form submit for adding new catalog item
+    document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Adding Item...';
 
-app.post('/api/catalog', requireAuth(['merchant']), async (req, res) => {
-  try {
-    const { name, price } = req.body;
-    const item = await CatalogItem.create({ name, price: parseFloat(price), inStock: true });
-    res.status(201).json(item);
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error creating catalog item' });
-  }
-});
+      const optionGroups = [];
 
-app.patch('/api/catalog/:id/stock', requireAuth(['merchant']), async (req, res) => {
-  try {
-    const item = await CatalogItem.findById(req.params.id);
-    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
-    item.inStock = !item.inStock;
-    await item.save();
-    res.json(item);
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error updating stock' });
-  }
-});
+      const sizes = document.getElementById('itemSizes').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (sizes.length > 0) optionGroups.push({ groupName: 'Size', choices: sizes });
 
-app.use(express.static(path.join(__dirname, 'public')));
+      const flavors = document.getElementById('itemFlavors').value.split(',').map(f => f.trim()).filter(Boolean);
+      if (flavors.length > 0) optionGroups.push({ groupName: 'Flavor', choices: flavors });
 
-// =========================================================================
-// SOCKET.IO WITH JWT AUTH
-// =========================================================================
-io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
-  if (!token) return next();
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    socket.user = decoded;
-    next();
-  } catch (err) {
-    next(new Error('Authentication error'));
-  }
-});
+      const colors = document.getElementById('itemColors').value.split(',').map(c => c.trim()).filter(Boolean);
+      if (colors.length > 0) optionGroups.push({ groupName: 'Color', choices: colors });
 
-io.on('connection', async (socket) => {
-  try {
-    const savedLocations = await DriverLocation.find();
-    socket.emit('update_fleet', savedLocations.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
-  } catch (err) {
-    console.error('Error loading driver locations:', err);
-  }
+      const payload = {
+        name: document.getElementById('itemName').value,
+        price: parseFloat(document.getElementById('itemPrice').value),
+        description: document.getElementById('itemDescription').value,
+        imageUrl: document.getElementById('itemImageUrl').value,
+        optionGroups
+      };
 
-  socket.on('driver_connect', async (data) => {
-    try {
-      await DriverLocation.findOneAndUpdate(
-        { driverId: data.driverId },
-        { lat: data.lat, lng: data.lng },
-        { upsert: true }
-      );
-      const allDrivers = await DriverLocation.find();
-      io.emit('update_fleet', allDrivers.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
-    } catch (err) {
-      console.error('Error saving driver location:', err);
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          document.getElementById('addItemForm').reset();
+          fetchCatalog();
+        } else {
+          alert('Failed to add item');
+        }
+      } catch (err) {
+        alert('Server connection error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Add Item to Catalog';
+      }
+    });
+
+    // Toggle item stock state
+    async function toggleStock(id, button) {
+      button.disabled = true;
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog/${id}/stock`, {
+          method: 'PATCH'
+        });
+        if (res.ok) {
+          fetchCatalog();
+        } else {
+          alert('Failed to update stock status');
+        }
+      } catch (err) {
+        alert('Server error updating stock');
+      }
     }
-  });
-});
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+    // Initialize Page
+    loadMerchantDashboard();
+    fetchCatalog();
+  </script>
+
+</body>
+</html>
