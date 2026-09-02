@@ -20,12 +20,13 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.2",
     "paynow": "^2.2.2",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.0",
-    "@capacitor/assets": "^3.0.5"
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.0"
   }
 }
