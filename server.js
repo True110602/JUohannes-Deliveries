@@ -3,20 +3,15 @@ const http = require('http');
 const path = require('path');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken'); // Added JWT library
 const { Paynow } = require('paynow');
 const { Server } = require('socket.io');
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
 const mongoose = require('mongoose');
 
 const app = express();
 const server = http.createServer(app);
 
-// Render (and most hosts like it) terminate HTTPS at their edge and
-// forward requests to this app over plain HTTP internally. Without
-// this line, Express can't reliably tell the connection is secure,
-// which matters for the session cookie settings below.
-app.set('trust proxy', 1);
+const JWT_SECRET = process.env.JWT_SECRET || 'johannes-deliveries-jwt-secret';
 
 // --- CORS ---
 const corsOptions = {
@@ -35,14 +30,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // =========================================================================
 // DATABASE CONNECTION
-// A real database is required now so that users, orders, and the catalog
-// all survive server restarts and redeploys - the in-memory/file-based
-// storage this app used before was wiped every time Render redeployed.
 // =========================================================================
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  console.error('MONGODB_URI is not set. This app now requires a MongoDB connection to store data persistently. Set MONGODB_URI in your environment variables and restart.');
+  console.error('MONGODB_URI is not set. Set MONGODB_URI in your environment variables.');
   process.exit(1);
 }
 
@@ -52,20 +44,6 @@ mongoose.connect(MONGODB_URI)
     console.error('MongoDB connection error:', err);
     process.exit(1);
   });
-
-// Session store also lives in MongoDB now, so logins survive restarts too
-// - previously every redeploy silently logged everyone out because the
-// default session store only lives in server memory.
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'johannes-deliveries-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: MONGODB_URI, collectionName: 'sessions' }),
-  cookie: {
-    secure: 'auto',
-    sameSite: 'none'
-  }
-}));
 
 // =========================================================================
 // MODELS
@@ -85,14 +63,13 @@ const orderSchema = new mongoose.Schema({
   dropoff: { type: String, required: true },
   item: { type: String, default: '' },
   amount: { type: Number, default: 0 },
-  status: { type: String, enum: ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'assigned', 'picked_up', 'delivered'], default: 'pending' },
   assignedDriver: { type: String, default: null },
   paymentMethod: { type: String, default: 'Cash' },
   ecocashNumber: { type: String, default: null },
   paymentStatus: { type: String, default: 'n/a' },
   paynowPollUrl: { type: String, default: null },
-  paynowInstructions: { type: String, default: null },
-  driverCommission: { type: Number, default: 0 }
+  paynowInstructions: { type: String, default: null }
 }, { timestamps: true });
 const Order = mongoose.model('Order', orderSchema);
 
@@ -110,9 +87,7 @@ const driverLocationSchema = new mongoose.Schema({
 }, { timestamps: true });
 const DriverLocation = mongoose.model('DriverLocation', driverLocationSchema);
 
-// Seed the four demo portal accounts (customer/driver/merchant/admin, all
-// password "1234") the first time the server runs against a fresh
-// database, if they don't already exist.
+// Seed initial users
 async function seedDemoUsers() {
   const demoRoles = ['customer', 'driver', 'merchant', 'admin'];
   for (const role of demoRoles) {
@@ -130,13 +105,6 @@ mongoose.connection.once('open', () => {
   seedDemoUsers().catch(err => console.error('Error seeding demo users:', err));
 });
 
-// --- DRIVER COMMISSION ---
-// Drivers earn this percentage of each order's amount for orders they
-// deliver. Stored on the order itself at creation time (rather than
-// computed on the fly from the current rate) so past orders keep showing
-// what was actually earned even if this rate changes later.
-const DRIVER_COMMISSION_RATE = 0.10; // 10%
-
 // --- PAYNOW (EcoCash payments) ---
 const PAYNOW_INTEGRATION_ID = process.env.PAYNOW_INTEGRATION_ID;
 const PAYNOW_INTEGRATION_KEY = process.env.PAYNOW_INTEGRATION_KEY;
@@ -147,36 +115,44 @@ if (PAYNOW_INTEGRATION_ID && PAYNOW_INTEGRATION_KEY) {
   paynow = new Paynow(PAYNOW_INTEGRATION_ID, PAYNOW_INTEGRATION_KEY);
   paynow.resultUrl = `${PUBLIC_URL}/api/payments/paynow-result`;
   paynow.returnUrl = `${PUBLIC_URL}/customer.html`;
-  console.log('Paynow configured - EcoCash payments are live');
-} else {
-  console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 
 // =========================================================================
-// AUTH
+// JWT AUTH MIDDLEWARE & ROUTES
 // =========================================================================
 function requireAuth(allowedRoles) {
   return (req, res, next) => {
-    if (!req.session || !req.session.user) {
-      if (req.accepts('html')) {
-        return res.redirect('/login.html');
-      }
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ success: false, message: 'Not logged in' });
     }
-    if (allowedRoles && !allowedRoles.includes(req.session.user.role)) {
-      if (req.accepts('html')) {
-        return res.status(403).send('Forbidden: your account does not have access to this page.');
+
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      req.user = decoded;
+
+      if (allowedRoles && !allowedRoles.includes(decoded.role)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
       }
-      return res.status(403).json({ success: false, message: 'Forbidden' });
+      next();
+    } catch (err) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
-    next();
   };
 }
 
 app.get('/api/check-session', (req, res) => {
-  if (req.session && req.session.user) {
-    res.json({ loggedIn: true, user: req.session.user });
-  } else {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.json({ loggedIn: false });
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ loggedIn: true, user: decoded });
+  } catch (err) {
     res.json({ loggedIn: false });
   }
 });
@@ -199,29 +175,23 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    req.session.user = {
-      email: user.email,
-      role: user.role
-    };
+    // Sign JWT token valid for 30 days
+    const token = jwt.sign(
+      { email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
     return res.json({
       success: true,
       message: 'Login successful',
+      token,
       redirectUrl: `/${user.role}.html`
     });
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ success: false, message: 'Server error during login' });
   }
-});
-
-app.get('/api/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ success: false, message: 'Could not log out' });
-    }
-    res.redirect('/login.html');
-  });
 });
 
 app.post('/api/register', async (req, res) => {
@@ -232,9 +202,6 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'All fields are required' });
     }
 
-    // Only customer and merchant accounts can be self-registered. Driver
-    // and admin accounts are set up separately (currently the seeded demo
-    // accounts) since those need vetting rather than open sign-up.
     const allowedSelfRegisterRoles = ['customer', 'merchant'];
     const chosenRole = allowedSelfRegisterRoles.includes(role) ? role : 'customer';
 
@@ -248,7 +215,6 @@ app.post('/api/register', async (req, res) => {
 
     return res.status(200).json({ success: true, message: 'Registration successful!' });
   } catch (err) {
-    console.error('Register error:', err);
     return res.status(500).json({ success: false, message: 'Server registration error' });
   }
 });
@@ -263,15 +229,8 @@ app.post('/api/orders', async (req, res) => {
     if (!customerName || !pickup || !dropoff) {
       return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
     }
-    if (paymentMethod === 'EcoCash' && !ecocashNumber) {
-      return res.status(400).json({ success: false, message: 'EcoCash number is required for EcoCash payments' });
-    }
 
     const orderAmount = parseFloat(amount) || 0;
-    if (paymentMethod === 'EcoCash' && orderAmount <= 0) {
-      return res.status(400).json({ success: false, message: 'A valid amount is required for EcoCash payments' });
-    }
-
     const order = new Order({
       customerName,
       pickup,
@@ -279,8 +238,7 @@ app.post('/api/orders', async (req, res) => {
       item: item || '',
       amount: orderAmount,
       paymentMethod: paymentMethod || 'Cash',
-      ecocashNumber: ecocashNumber || null,
-      driverCommission: orderAmount * DRIVER_COMMISSION_RATE
+      ecocashNumber: ecocashNumber || null
     });
 
     if (paymentMethod === 'EcoCash') {
@@ -288,7 +246,7 @@ app.post('/api/orders', async (req, res) => {
         order.paymentStatus = 'not_configured';
       } else {
         try {
-          const customerEmail = (req.session.user && req.session.user.email) || 'customer@example.com';
+          const customerEmail = (req.user && req.user.email) || 'customer@example.com';
           const payment = paynow.createPayment(`Order-${order._id}`, customerEmail);
           payment.add(item || 'Delivery order', orderAmount);
 
@@ -303,7 +261,6 @@ app.post('/api/orders', async (req, res) => {
             order.paynowInstructions = response.error;
           }
         } catch (err) {
-          console.error('Paynow error:', err);
           order.paymentStatus = 'failed';
           order.paynowInstructions = 'Could not reach Paynow. Please try again.';
         }
@@ -311,13 +268,11 @@ app.post('/api/orders', async (req, res) => {
     }
 
     await order.save();
-
     const allOrders = await Order.find().sort({ createdAt: -1 });
     io.emit('update_orders', allOrders);
 
     res.status(201).json({ success: true, order });
   } catch (err) {
-    console.error('Create order error:', err);
     res.status(500).json({ success: false, message: 'Server error creating order' });
   }
 });
@@ -334,14 +289,8 @@ app.get('/api/orders', async (req, res) => {
 app.patch('/api/orders/:id/assign', requireAuth(['admin']), async (req, res) => {
   try {
     const { driverEmail } = req.body;
-    if (!driverEmail) {
-      return res.status(400).json({ success: false, message: 'driverEmail is required' });
-    }
-
     const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     order.assignedDriver = driverEmail;
     order.status = 'assigned';
@@ -358,15 +307,8 @@ app.patch('/api/orders/:id/assign', requireAuth(['admin']), async (req, res) => 
 app.patch('/api/orders/:id/status', requireAuth(['admin', 'driver']), async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ success: false, message: `status must be one of: ${validStatuses.join(', ')}` });
-    }
-
     const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     order.status = status;
     await order.save();
@@ -382,9 +324,7 @@ app.patch('/api/orders/:id/status', requireAuth(['admin', 'driver']), async (req
 app.get('/api/orders/:id/payment-status', requireAuth(), async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (!order.paynowPollUrl || !paynow) {
       return res.json({ success: true, paymentStatus: order.paymentStatus });
     }
@@ -417,12 +357,12 @@ app.post('/api/payments/paynow-result', async (req, res) => {
     }
     res.sendStatus(200);
   } catch (err) {
-    res.sendStatus(200); // Paynow just needs a 200 acknowledgement either way
+    res.sendStatus(200);
   }
 });
 
 // =========================================================================
-// CATALOG
+// CATALOG & STATIC FILES
 // =========================================================================
 app.get('/api/catalog', async (req, res) => {
   try {
@@ -436,10 +376,6 @@ app.get('/api/catalog', async (req, res) => {
 app.post('/api/catalog', requireAuth(['merchant']), async (req, res) => {
   try {
     const { name, price } = req.body;
-    if (!name || price === undefined) {
-      return res.status(400).json({ success: false, message: 'Name and price are required' });
-    }
-
     const item = await CatalogItem.create({ name, price: parseFloat(price), inStock: true });
     res.status(201).json(item);
   } catch (err) {
@@ -450,9 +386,7 @@ app.post('/api/catalog', requireAuth(['merchant']), async (req, res) => {
 app.patch('/api/catalog/:id/stock', requireAuth(['merchant']), async (req, res) => {
   try {
     const item = await CatalogItem.findById(req.params.id);
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Item not found' });
-    }
+    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
     item.inStock = !item.inStock;
     await item.save();
     res.json(item);
@@ -461,38 +395,29 @@ app.patch('/api/catalog/:id/stock', requireAuth(['merchant']), async (req, res) 
   }
 });
 
-// =========================================================================
-// PROTECTED DASHBOARD PAGES
-// =========================================================================
-app.get('/admin.html', requireAuth(['admin']), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-app.get('/driver.html', requireAuth(['driver']), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'driver.html'));
-});
-app.get('/merchant.html', requireAuth(['merchant']), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'merchant.html'));
-});
-app.get('/customer.html', requireAuth(['customer']), (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'customer.html'));
-});
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =========================================================================
-// SOCKET.IO - REAL-TIME MAP & FLEET TRACKING
-// Last known driver positions are now saved to MongoDB too (upserted per
-// driver), so the admin map can show where drivers were even right after
-// a restart, before any of them reconnect.
+// SOCKET.IO WITH JWT AUTHENTICATION
 // =========================================================================
-io.on('connection', async (socket) => {
-  console.log('A user connected:', socket.id);
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    socket.user = decoded;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
 
+io.on('connection', async (socket) => {
   try {
     const savedLocations = await DriverLocation.find();
     socket.emit('update_fleet', savedLocations.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
   } catch (err) {
-    console.error('Error loading saved driver locations:', err);
+    console.error('Error loading driver locations:', err);
   }
 
   socket.on('driver_connect', async (data) => {
@@ -508,13 +433,8 @@ io.on('connection', async (socket) => {
       console.error('Error saving driver location:', err);
     }
   });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
 });
 
-// --- START SERVER ---
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
