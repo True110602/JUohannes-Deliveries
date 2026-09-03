@@ -132,10 +132,10 @@ const CatalogItem = mongoose.model('CatalogItem', CatalogItemSchema);
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, message: 'Access denied.' });
+  if (!token) return res.status(401).json({ success: false, loggedIn: false, message: 'Access denied. No token provided.' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: 'Invalid token.' });
+    if (err) return res.status(403).json({ success: false, loggedIn: false, message: 'Invalid or expired token.' });
     req.user = user;
     next();
   });
@@ -152,7 +152,7 @@ function requireRole(...roles) {
 
 // REST API Endpoints
 
-// 1. Session Check
+// 1. Session Check Route
 app.get('/api/check-session', authenticateToken, (req, res) => {
   res.json({ loggedIn: true, user: req.user });
 });
@@ -576,7 +576,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.id && socket.on('disconnect', () => {
     delete activeDrivers[socket.id];
     io.emit('update_fleet', Object.values(activeDrivers));
   });
@@ -608,19 +608,4 @@ mongoose.connect(MONGO_URI)
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
-    app.get('/api/check-session', (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ loggedIn: false, message: 'No token provided' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ loggedIn: false, message: 'Invalid or expired token' });
-    }
-    res.json({ loggedIn: true, user });
-  });
-});
   });
