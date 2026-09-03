@@ -1,410 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
+const express = require('express');
+const router = express.Router();
+const User = require('../models/user');
+const CatalogItem = require('../models/CatalogItem');
+const Order = require('../models/Order');
+const { requireRole } = require('../middleware/auth');
 
-    // 1. If no token in local storage, send back to login
-    if (!token) {
-      window.location.href = '/index.html'; // Change to your login page filename if different
-      return;
+// Merchant's own profile - profile picture and bank/payout details,
+// persisted server-side so they follow the account across devices.
+router.get('/profile', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('email profilePicUrl bankDetails');
+    if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
+    res.json({ success: true, profile: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const { profilePicUrl, bankName, accountName, accountNumber } = req.body;
+    const update = {};
+    if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
+    if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
+      update.bankDetails = { bankName, accountName, accountNumber };
     }
 
-    try {
-      // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
+    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email profilePicUrl bankDetails');
+    res.json({ success: true, profile: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-      const data = await res.json();
+// Merchant's own items only (the public /api/catalog returns everyone's)
+router.get('/catalog', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const items = await CatalogItem.find({ merchantEmail: req.user.email }).sort({ createdAt: -1 });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
-      if (!res.ok || !data.loggedIn) {
-        // Token expired or invalid -> Clear local storage & kick back
-        localStorage.removeItem('token');
-        window.location.href = '/index.html';
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-      // Fallback: stay on page if backend server is temporarily unreachable
-    }
-  })();
-</script>
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
-  <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        }
-      });
-  </script>
-  <meta charset="UTF-8">
-  <title>Johannes Deliveries - Merchant Portal</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f9; display: flex; min-height: 100vh; }
+// Approximate sales stats - matches delivered orders whose "item" text
+// mentions one of this merchant's catalog item names. Orders currently
+// store items as a combined text field rather than structured line items
+// linking back to a specific catalog item/merchant, so this is an
+// estimate, not an exact figure.
+router.get('/stats', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
+    const myItemNames = myItems.map(i => i.name);
 
-    /* Sidebar Layout */
-    .sidebar { width: 280px; background: #1e293b; color: white; padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-shrink: 0; }
-    .sidebar-profile { text-align: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-    .profile-img { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #007bff; margin-bottom: 10px; background: #334155; }
-    .sidebar h3 { font-size: 16px; margin: 0 0 10px 0; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    const allOrders = await Order.find({ status: 'delivered' });
+    const myOrders = allOrders.filter(o => myItemNames.some(name => (o.item || '').includes(name)));
 
-    /* Stats Widget */
-    .stat-card { background: #334155; padding: 12px; border-radius: 6px; margin-bottom: 10px; }
-    .stat-card .label { font-size: 12px; color: #cbd5e1; }
-    .stat-card .value { font-size: 20px; font-weight: bold; color: #22c55e; margin-top: 4px; }
+    const totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
 
-    /* Main Content Area */
-    .main-content { flex: 1; padding: 30px; overflow-y: auto; }
-    .container { max-width: 700px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: auto; }
+    res.json({ success: true, salesCount: myOrders.length, totalRevenue });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-    input, textarea, select, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; }
-    button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
-    button:disabled { background: #6c757d; cursor: not-allowed; }
-
-    .sidebar input, .sidebar button { font-size: 12px; padding: 8px; margin-bottom: 8px; }
-    .sidebar button { background: #0d9488; margin-top: 4px; }
-
-    /* Catalog Cards */
-    .item-list { margin-top: 20px; }
-    .item-card { border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-bottom: 12px; background: #fafafa; display: flex; gap: 15px; align-items: flex-start; }
-    .item-card img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; }
-    .item-info { flex: 1; }
-    .btn-toggle { width: auto; padding: 6px 12px; margin: 4px 0 0 0; font-size: 12px; }
-    .badge { display: inline-block; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px; margin-top: 4px; }
-    .hint { font-size: 12px; color: #666; margin-top: -8px; margin-bottom: 10px; }
-
-    /* Custom option group builder */
-    #customGroupsBuilder { border: 1px dashed #ccc; border-radius: 6px; padding: 10px; margin-top: 5px; margin-bottom: 12px; background: #fafafa; }
-    .custom-group-row { display: flex; gap: 8px; margin-bottom: 8px; }
-    .custom-group-row input { margin: 0; }
-    .custom-group-row button { width: auto; margin: 0; padding: 8px 10px; background: #dc3545; }
-    #addCustomGroupBtn { background: #6c757d; margin-top: 0; }
-  </style>
-</head>
-<body>
-
-  <!-- Left Sidebar Navigation -->
-  <div class="sidebar">
-    <div class="sidebar-profile">
-      <img id="profilePicDisplay" class="profile-img" src="https://via.placeholder.com/90?text=Merchant" alt="Profile Picture" onerror="this.src='https://via.placeholder.com/90?text=Merchant'">
-      <h4 id="merchantEmailText" style="margin: 0; font-size: 14px; color: #f8fafc;">Merchant Account</h4>
-
-      <div style="margin-top: 10px;">
-        <input type="url" id="profilePicUrlInput" placeholder="Profile Image URL">
-        <button type="button" id="updatePicBtn" onclick="updateProfilePic()">Update Photo</button>
-      </div>
-    </div>
-
-    <!-- Sales & Earnings Stats -->
-    <div>
-      <h3>Performance</h3>
-      <div class="stat-card">
-        <div class="label">Total Sales Made</div>
-        <div class="value" id="statSalesCount">0 orders</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Total Revenue Earned</div>
-        <div class="value" id="statRevenueAmount">$0.00</div>
-      </div>
-    </div>
-
-    <!-- Bank Details Form -->
-    <div>
-      <h3>Payment / Bank Details</h3>
-      <form id="bankDetailsForm">
-        <input type="text" id="bankName" placeholder="Bank Name (e.g. CABS, FBC)" required>
-        <input type="text" id="accountName" placeholder="Account Holder Name" required>
-        <input type="text" id="accountNumber" placeholder="Account Number / EcoCash" required>
-        <button type="submit" id="saveBankBtn">Save Payment Details</button>
-      </form>
-      <div id="bankMsg" style="font-size: 11px; text-align: center;"></div>
-    </div>
-  </div>
-
-  <!-- Main Catalog Manager Content -->
-  <div class="main-content">
-    <div class="container">
-      <h2>Merchant Catalog Manager</h2>
-
-      <form id="addItemForm">
-        <label>Item Name:</label>
-        <input type="text" id="itemName" required placeholder="e.g. Mozambican Piri-Piri Chicken">
-
-        <label>Price (USD):</label>
-        <input type="number" id="itemPrice" step="0.01" required placeholder="12.50">
-
-        <label>Description:</label>
-        <textarea id="itemDescription" rows="2" placeholder="Brief description of the product..."></textarea>
-
-        <label>Image URL:</label>
-        <input type="url" id="itemImageUrl" placeholder="https://example.com/item-photo.jpg">
-
-        <label>Sizes (comma-separated):</label>
-        <input type="text" id="itemSizes" placeholder="Small, Medium, Large">
-
-        <label>Flavors (comma-separated):</label>
-        <input type="text" id="itemFlavors" placeholder="Mild, Hot Piri-Piri, Extra Spicy">
-
-        <label>Colors (comma-separated):</label>
-        <input type="text" id="itemColors" placeholder="Red, Black, Blue">
-        <div class="hint">Leave options blank if they don't apply to this item.</div>
-
-        <label>Other custom options (side dishes, sauces, temperature - anything else):</label>
-        <div id="customGroupsBuilder">
-          <div id="customGroupsList"></div>
-          <button type="button" id="addCustomGroupBtn" onclick="addCustomGroupRow()">+ Add another option group</button>
-        </div>
-
-        <button type="submit" id="submitBtn">Add Item to Catalog</button>
-      </form>
-
-      <h3>Current Catalog</h3>
-      <div id="catalogContainer" class="item-list">
-        <span class="inline-spinner"></span>Loading items...
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // --- Custom option group builder (beyond Size/Flavor/Color) ---
-    function addCustomGroupRow() {
-      const list = document.getElementById('customGroupsList');
-      const row = document.createElement('div');
-      row.className = 'custom-group-row';
-      row.innerHTML = `
-        <input type="text" class="custom-group-name" placeholder="Group name, e.g. Side Dish">
-        <input type="text" class="custom-group-choices" placeholder="Choices, comma separated, e.g. Fries, Rice, Salad">
-        <button type="button" onclick="this.parentElement.remove()">Remove</button>
-      `;
-      list.appendChild(row);
-    }
-
-    function collectOptionGroups() {
-      const optionGroups = [];
-
-      const sizes = document.getElementById('itemSizes').value.split(',').map(s => s.trim()).filter(Boolean);
-      if (sizes.length > 0) optionGroups.push({ groupName: 'Size', choices: sizes });
-
-      const flavors = document.getElementById('itemFlavors').value.split(',').map(f => f.trim()).filter(Boolean);
-      if (flavors.length > 0) optionGroups.push({ groupName: 'Flavor', choices: flavors });
-
-      const colors = document.getElementById('itemColors').value.split(',').map(c => c.trim()).filter(Boolean);
-      if (colors.length > 0) optionGroups.push({ groupName: 'Color', choices: colors });
-
-      document.querySelectorAll('.custom-group-row').forEach(row => {
-        const groupName = row.querySelector('.custom-group-name').value.trim();
-        const choicesRaw = row.querySelector('.custom-group-choices').value.trim();
-        if (groupName && choicesRaw) {
-          const choices = choicesRaw.split(',').map(c => c.trim()).filter(Boolean);
-          if (choices.length > 0) optionGroups.push({ groupName, choices });
-        }
-      });
-
-      return optionGroups;
-    }
-
-    // Fetch merchant sales stats and saved profile/bank details on load -
-    // all persisted server-side now, tied to this account, instead of
-    // living only in this browser's localStorage.
-    async function loadMerchantDashboard() {
-      try {
-        const statsRes = await authFetch(`${window.API_BASE}/api/merchant/stats`);
-        if (statsRes.ok) {
-          const stats = await statsRes.json();
-          document.getElementById('statSalesCount').innerText = `${stats.salesCount} orders`;
-          document.getElementById('statRevenueAmount').innerText = `$${stats.totalRevenue.toFixed(2)}`;
-        }
-      } catch (err) {
-        console.error('Error loading dashboard stats:', err);
-      }
-
-      try {
-        const profileRes = await authFetch(`${window.API_BASE}/api/merchant/profile`);
-        if (profileRes.ok) {
-          const { profile } = await profileRes.json();
-          document.getElementById('merchantEmailText').innerText = profile.email;
-
-          if (profile.profilePicUrl) {
-            document.getElementById('profilePicDisplay').src = profile.profilePicUrl;
-            document.getElementById('profilePicUrlInput').value = profile.profilePicUrl;
-          }
-          if (profile.bankDetails) {
-            document.getElementById('bankName').value = profile.bankDetails.bankName || '';
-            document.getElementById('accountName').value = profile.bankDetails.accountName || '';
-            document.getElementById('accountNumber').value = profile.bankDetails.accountNumber || '';
-          }
-        }
-      } catch (err) {
-        console.error('Error loading profile:', err);
-      }
-    }
-
-    // Profile Picture Update Handler - saved to the server now
-    async function updateProfilePic() {
-      const url = document.getElementById('profilePicUrlInput').value.trim();
-      if (!url) return;
-
-      const btn = document.getElementById('updatePicBtn');
-      setButtonLoading(btn, true, 'Saving...');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/merchant/profile`, {
-          method: 'PATCH',
-          body: JSON.stringify({ profilePicUrl: url })
-        });
-        if (res.ok) {
-          document.getElementById('profilePicDisplay').src = url;
-        } else {
-          alert('Could not save profile picture.');
-        }
-      } finally {
-        setButtonLoading(btn, false);
-      }
-    }
-
-    // Bank Details Save Handler - saved to the server now
-    document.getElementById('bankDetailsForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const saveBtn = document.getElementById('saveBankBtn');
-      const msg = document.getElementById('bankMsg');
-
-      setButtonLoading(saveBtn, true, 'Saving...');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/merchant/profile`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            bankName: document.getElementById('bankName').value,
-            accountName: document.getElementById('accountName').value,
-            accountNumber: document.getElementById('accountNumber').value
-          })
-        });
-
-        if (res.ok) {
-          msg.style.color = '#22c55e';
-          msg.innerText = 'Bank details saved successfully!';
-        } else {
-          msg.style.color = '#dc3545';
-          msg.innerText = 'Could not save bank details.';
-        }
-      } catch (err) {
-        msg.style.color = '#dc3545';
-        msg.innerText = 'Server connection error.';
-      } finally {
-        setButtonLoading(saveBtn, false);
-        setTimeout(() => { msg.innerText = ''; }, 3000);
-      }
-    });
-
-    // Fetch and display THIS merchant's own menu items only (not every
-    // merchant's items - that's what the public /api/catalog is for).
-    async function fetchCatalog() {
-      const container = document.getElementById('catalogContainer');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/merchant/catalog`);
-        const items = await res.json();
-        container.innerHTML = '';
-
-        if (items.length === 0) {
-          container.innerHTML = '<i>No catalog items found. Add your first item above!</i>';
-          return;
-        }
-
-        items.forEach(item => {
-          const div = document.createElement('div');
-          div.className = 'item-card';
-
-          const optionsHtml = (item.optionGroups || []).map(group => `
-            <div>
-              <small><strong>${group.groupName}:</strong> ${group.choices.map(c => `<span class="badge">${c}</span>`).join('')}</small>
-            </div>
-          `).join('');
-
-          div.innerHTML = `
-            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.name}" onerror="this.style.display='none'">` : ''}
-            <div class="item-info">
-              <strong>${item.name}</strong> - $${item.price.toFixed(2)}
-              <span style="color: ${item.inStock ? 'green' : 'red'}; font-weight: bold;">(${item.inStock ? 'In Stock' : 'Out of Stock'})</span>
-              ${item.description ? `<p style="font-size:13px; color:#555; margin: 4px 0;">${item.description}</p>` : ''}
-              ${optionsHtml}
-              <button class="btn-toggle" onclick="toggleStock('${item._id}', this)">
-                ${item.inStock ? 'Mark Out of Stock' : 'Mark In Stock'}
-              </button>
-            </div>
-          `;
-          container.appendChild(div);
-        });
-      } catch (err) {
-        container.innerHTML = 'Error loading catalog.';
-      }
-    }
-
-    // Form submit for adding new catalog item
-    document.getElementById('addItemForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const submitBtn = document.getElementById('submitBtn');
-      setButtonLoading(submitBtn, true, 'Adding Item...');
-
-      const payload = {
-        name: document.getElementById('itemName').value,
-        price: parseFloat(document.getElementById('itemPrice').value),
-        description: document.getElementById('itemDescription').value,
-        imageUrl: document.getElementById('itemImageUrl').value,
-        optionGroups: collectOptionGroups()
-      };
-
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/catalog`, {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          document.getElementById('addItemForm').reset();
-          document.getElementById('customGroupsList').innerHTML = '';
-          fetchCatalog();
-          loadMerchantDashboard();
-        } else {
-          alert('Failed to add item');
-        }
-      } catch (err) {
-        alert('Server connection error');
-      } finally {
-        setButtonLoading(submitBtn, false);
-      }
-    });
-
-    // Toggle item stock state
-    async function toggleStock(id, button) {
-      setButtonLoading(button, true, 'Updating...');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/catalog/${id}/stock`, {
-          method: 'PATCH'
-        });
-        if (res.ok) {
-          fetchCatalog();
-        } else {
-          alert('Failed to update stock status');
-        }
-      } catch (err) {
-        alert('Server error updating stock');
-      } finally {
-        setButtonLoading(button, false);
-      }
-    }
-
-    // Initialize Page
-    loadMerchantDashboard();
-    fetchCatalog();
-  </script>
-
-</body>
-</html>
+module.exports = router;
