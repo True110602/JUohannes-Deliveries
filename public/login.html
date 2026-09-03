@@ -189,6 +189,171 @@
         errorDiv.innerText = 'Server connection error. Please check network or Render status.';
       }
     });
+    <html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Johannes Deliveries</title>
+</head>
+<body>
+
+  <!-- Your Existing Login Form Container -->
+  <div style="max-width: 400px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <div style="margin-bottom: 15px;">
+        <label for="email">Email / Username:</label>
+        <input type="text" id="email" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" />
+      </div>
+
+      <div style="margin-bottom: 10px;">
+        <label for="password">Password:</label>
+        <input type="password" id="password" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" />
+      </div>
+
+      <!-- Forgot Password Trigger Link -->
+      <div style="text-align: right; margin-bottom: 15px;">
+        <a href="#" id="forgotPasswordBtn" style="color: #1a73e8; text-decoration: none; font-size: 14px;">Forgot Password?</a>
+      </div>
+
+      <button type="submit" style="width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Login</button>
+    </form>
+  </div>
+
+  <!-- Password Reset Modal Popup -->
+  <div id="resetPasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+      
+      <!-- Step 1: Request Code -->
+      <div id="stepRequestCode">
+        <h3 style="margin-top: 0;">Reset Password</h3>
+        <p style="font-size: 14px; color: #666;">Enter your registered email address to receive a 6-digit verification code.</p>
+        <input type="email" id="resetEmailInput" placeholder="Enter your email" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnSendCode" onclick="handleRequestCode()" style="padding: 8px 15px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Send Code</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Submit Code & New Password -->
+      <div id="stepSubmitReset" style="display: none;">
+        <h3 style="margin-top: 0;">Enter Reset Code</h3>
+        <p style="font-size: 14px; color: #666;">Check your email for the 6-digit verification code.</p>
+        <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" style="width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box;" />
+        <input type="password" id="newPasswordInput" placeholder="Enter new password" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnResetPassword" onclick="handleResetPassword()" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Password</button>
+        </div>
+      </div>
+
+      <p id="resetModalStatus" style="margin-top: 15px; font-size: 13px; font-weight: bold; text-align: center; color: #d9534f;"></p>
+    </div>
+  </div>
+
+  <!-- Inline Script for Reset Password Logic -->
+  <script>
+    // Modal Visibility Control
+    document.getElementById('forgotPasswordBtn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('resetPasswordModal').style.display = 'flex';
+      document.getElementById('stepRequestCode').style.display = 'block';
+      document.getElementById('stepSubmitReset').style.display = 'none';
+      document.getElementById('resetModalStatus').innerText = '';
+    });
+
+    function closeResetModal() {
+      document.getElementById('resetPasswordModal').style.display = 'none';
+    }
+
+    // Step 1: Send Request to Server for Reset Code
+    async function handleRequestCode() {
+      const email = document.getElementById('resetEmailInput').value.trim();
+      const statusEl = document.getElementById('resetModalStatus');
+
+      if (!email) {
+        statusEl.style.color = '#d9534f';
+        statusEl.innerText = 'Please enter your email address.';
+        return;
+      }
+
+      statusEl.style.color = '#333';
+      statusEl.innerText = 'Sending request...';
+
+      try {
+        const res = await fetch('/api/request-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          statusEl.style.color = 'green';
+          statusEl.innerText = 'Code generated! Check your email.';
+          
+          if (data.devResetCode) {
+            console.log('DEV RESET CODE:', data.devResetCode);
+          }
+
+          setTimeout(() => {
+            document.getElementById('stepRequestCode').style.display = 'none';
+            document.getElementById('stepSubmitReset').style.display = 'block';
+            statusEl.innerText = '';
+          }, 1200);
+
+        } else {
+          statusEl.style.color = '#d9534f';
+          statusEl.innerText = data.message || 'Error sending request.';
+        }
+      } catch (err) {
+        statusEl.style.color = '#d9534f';
+        statusEl.innerText = 'Server error. Please try again.';
+      }
+    }
+
+    // Step 2: Submit Code & Update Password
+    async function handleResetPassword() {
+      const email = document.getElementById('resetEmailInput').value.trim();
+      const resetCode = document.getElementById('resetCodeInput').value.trim();
+      const newPassword = document.getElementById('newPasswordInput').value.trim();
+      const statusEl = document.getElementById('resetModalStatus');
+
+      if (!resetCode || !newPassword) {
+        statusEl.style.color = '#d9534f';
+        statusEl.innerText = 'Please fill in both the code and your new password.';
+        return;
+      }
+
+      statusEl.style.color = '#333';
+      statusEl.innerText = 'Updating password...';
+
+      try {
+        const res = await fetch('/api/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, resetCode, newPassword })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          statusEl.style.color = 'green';
+          statusEl.innerText = 'Password reset successful!';
+          setTimeout(() => {
+            closeResetModal();
+            alert('Password updated successfully. You can now log in!');
+          }, 1500);
+        } else {
+          statusEl.style.color = '#d9534f';
+          statusEl.innerText = data.message || 'Failed to reset password.';
+        }
+      } catch (err) {
+        statusEl.style.color = '#d9534f';
+        statusEl.innerText = 'Server error. Please try again.';
+      }
+    }
   </script>
 </body>
 </html>
