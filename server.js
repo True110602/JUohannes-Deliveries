@@ -1,611 +1,247 @@
+// server.js
+require('dotenv').config();
 const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
 const mongoose = require('mongoose');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken'); // Using jsonwebtoken for standard JWT ops
 const nodemailer = require('nodemailer');
+const path = require('path');
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
-});
 
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'johannes_deliveries_secret_key_2026';
-
-// Environment variable cleaning helper
-const cleanEnv = (val) => (val ? String(val).replace(/['"]/g, '').trim() : '');
-
-const EMAIL_USER = cleanEnv(process.env.EMAIL_USER);
-const EMAIL_PASS = cleanEnv(process.env.EMAIL_PASS);
-
-// Database Connection String Check
-const MONGO_URI = cleanEnv(process.env.MONGODB_URL || process.env.MONGODB_URI || process.env.MONGO_URI);
-
-if (!MONGO_URI) {
-  console.error('------------------------------------------------------------');
-  console.error('CRITICAL ERROR: No MongoDB connection string found!');
-  console.error('Please check Environment Variables on Render (MONGODB_URL).');
-  console.error('------------------------------------------------------------');
-  process.exit(1);
-}
-
-// Nodemailer Transporter Setup
-let transporter = null;
-if (EMAIL_USER && EMAIL_PASS) {
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: EMAIL_USER,
-      pass: EMAIL_PASS
-    }
-  });
-
-  transporter.verify((error) => {
-    if (error) {
-      console.warn('⚠️ Nodemailer warning: Invalid EMAIL_USER or EMAIL_PASS credentials.');
-      console.warn('Details:', error.message);
-    } else {
-      console.log(`✅ Nodemailer connected successfully with ${EMAIL_USER}. Ready to send emails.`);
-    }
-  });
-} else {
-  console.log('ℹ️ EMAIL_USER / EMAIL_PASS missing. Password reset codes will log to console & API response.');
-}
-
-// Helper to escape special regex characters safely
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Helper to perform safe case-insensitive email lookup without ReDoS risk
-function findUserByEmail(email) {
-  if (!email) return null;
-  const cleanInput = String(email).trim();
-  const safeInput = escapeRegExp(cleanInput);
-  return User.findOne({ 
-    email: { $regex: new RegExp(`^${safeInput}$`, 'i') } 
-  });
-}
-
-// Middleware
-app.use(cors());
+// --- MIDDLEWARE ---
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public'))); // Serves your static HTML files
 
-// MongoDB Schemas & Models
-const UserSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
+// --- MONGOOSE DATABASE SETUP ---
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/johannes_deliveries';
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+
+// --- USER SCHEMA & MODEL ---
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['customer', 'driver', 'merchant', 'admin'], default: 'customer' },
-  address: { type: String, default: '' },
-  paymentMethod: { type: String, default: 'Cash' },
-  profilePicUrl: { type: String, default: '' },
-  bankDetails: {
-    bankName: { type: String, default: '' },
-    accountName: { type: String, default: '' },
-    accountNumber: { type: String, default: '' }
-  },
-  resetPasswordCode: { type: String, default: null },
-  resetPasswordExpires: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now }
+  role: { type: String, enum: ['customer', 'driver', 'merchant'], default: 'customer' },
+  resetCode: { type: String, default: null },
+  resetCodeExpires: { type: Date, default: null }
+}, { timestamps: true });
+
+const User = mongoose.model('User', userSchema);
+
+// --- NODEMAILER TRANSPORTER ---
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
 });
 
-const OrderSchema = new mongoose.Schema({
-  customerName: String,
-  pickup: String,
-  dropoff: String,
-  item: String,
-  amount: Number,
-  paymentMethod: String,
-  ecocashNumber: String,
-  paymentStatus: { type: String, default: 'pending' },
-  status: { type: String, default: 'pending' },
-  assignedDriver: { type: String, default: null },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const OptionGroupSchema = new mongoose.Schema({
-  groupName: { type: String, required: true },
-  choices: [{ type: String, required: true }]
-});
-
-const CatalogItemSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  description: { type: String, default: '' },
-  imageUrl: { type: String, default: '' },
-  inStock: { type: Boolean, default: true },
-  optionGroups: [OptionGroupSchema],
-  merchantEmail: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', UserSchema);
-const Order = mongoose.model('Order', OrderSchema);
-const CatalogItem = mongoose.model('CatalogItem', CatalogItemSchema);
-
-// Auth Middleware
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, loggedIn: false, message: 'Access denied. No token provided.' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, loggedIn: false, message: 'Invalid or expired token.' });
-    req.user = user;
-    next();
-  });
+// Helper function to resolve redirect path based on role
+function getRedirectUrlByRole(role) {
+  switch (role) {
+    case 'driver':
+      return '/driver.html';
+    case 'merchant':
+      return '/merchant.html';
+    case 'customer':
+    default:
+      return '/customer.html';
+  }
 }
 
-function requireRole(...roles) {
-  return [authenticateToken, (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Forbidden: your account does not have access to this.' });
-    }
-    next();
-  }];
-}
+// ==========================================
+// API ROUTES
+// ==========================================
 
-// REST API Endpoints
-
-// 1. Session Check Route
-app.get('/api/check-session', authenticateToken, (req, res) => {
-  res.json({ loggedIn: true, user: req.user });
-});
-
-// 2. Registration
+// 1. REGISTER NEW USER
 app.post('/api/register', async (req, res) => {
   try {
-    const { email, password, role, address, paymentMethod } = req.body;
-    
-    if (!email || !password || typeof password !== 'string') {
-      return res.status(400).json({ success: false, message: 'Email and a valid password are required.' });
+    const { email, password, role } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
-    const cleanInput = String(email).trim();
-    const existingUser = await findUserByEmail(cleanInput);
-
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Username or email already exists.' });
+      return res.status(400).json({ success: false, message: 'Email is already registered.' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({
-      email: cleanInput,
+    const newUser = await User.create({
+      email,
       password: hashedPassword,
-      role: role || 'customer',
-      address: address || '',
-      paymentMethod: paymentMethod || 'Cash'
+      role: role || 'customer'
     });
 
-    await user.save();
-    res.json({ success: true, message: 'Account registered successfully.' });
+    // Issue JWT Token immediately upon registration
+    const secret = process.env.JWT_SECRET || 'fallback_secret_key';
+    const token = jwt.sign({ id: newUser._id, role: newUser.role }, secret, { expiresIn: '7d' });
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created successfully.',
+      token,
+      redirectUrl: getRedirectUrlByRole(newUser.role)
+    });
   } catch (err) {
     console.error('Registration Error:', err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: 'Server error during registration.' });
   }
 });
 
-// 3. Login
+// 2. LOGIN USER
 app.post('/api/login', async (req, res) => {
   try {
-    const emailInput = req.body.email || req.body.username;
-    const passwordInput = req.body.password;
+    const { email, password } = req.body;
 
-    if (!emailInput || !passwordInput || typeof passwordInput !== 'string') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please provide both email/username and password.' 
-      });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide email and password.' });
     }
 
-    const user = await findUserByEmail(emailInput);
-
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ success: false, message: 'User not found.' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    if (!user.password || typeof user.password !== 'string') {
-      console.error(`Login error: Account '${emailInput}' exists but lacks a password hash.`);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Account configuration error. Please reset your password or re-register.' 
-      });
-    }
-
-    const isMatch = await bcrypt.compare(String(passwordInput), String(user.password));
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid password.' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    const secret = process.env.JWT_SECRET || 'fallback_secret_key';
+    const token = jwt.sign({ id: user._id, role: user.role }, secret, { expiresIn: '7d' });
 
-    const redirectMap = {
-      customer: '/customer.html',
-      driver: '/driver.html',
-      merchant: '/merchant.html',
-      admin: '/admin.html'
-    };
-
-    return res.json({
+    res.json({
       success: true,
       token,
-      redirectUrl: redirectMap[user.role] || '/customer.html'
+      redirectUrl: getRedirectUrlByRole(user.role)
     });
-
   } catch (err) {
-    console.error('Detailed Login Error:', err);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Server login error: ' + (err.message || 'Unknown error') 
-    });
+    console.error('Login Error:', err);
+    res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });
 
-// 4. Request Password Reset Code
+// 3. CHECK SESSION (Automated head script check)
+app.get('/api/check-session', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ loggedIn: false });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET || 'fallback_secret_key';
+
+    const decoded = jwt.verify(token, secret);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ loggedIn: false });
+    }
+
+    res.json({
+      loggedIn: true,
+      user: { id: user._id, email: user.email, role: user.role },
+      redirectUrl: getRedirectUrlByRole(user.role)
+    });
+  } catch (err) {
+    res.status(401).json({ loggedIn: false, message: 'Session expired or invalid.' });
+  }
+});
+
+// 4. REQUEST PASSWORD RESET (Generate & Email Code)
 app.post('/api/request-password-reset', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ success: false, message: 'Please provide your email/username.' });
+      return res.status(400).json({ success: false, message: 'Email is required.' });
     }
 
-    const user = await findUserByEmail(email);
-
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Account not found.' });
+      // Return 200/404 based on design preference. 
+      return res.status(404).json({ success: false, message: 'No account with that email was found.' });
     }
 
-    // Generate 6-digit verification code
+    // Generate random 6-digit verification code
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Code expires in 15 minutes
-    user.resetPasswordCode = resetCode;
-    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Hash the code before saving to MongoDB
+    const hashedCode = await bcrypt.hash(resetCode, 10);
+    user.resetCode = hashedCode;
+    user.resetCodeExpires = Date.now() + 15 * 60 * 1000; // Expires in 15 minutes
     await user.save();
 
-    console.log(`[PASSWORD RESET CODE] User: ${user.email} | Code: ${resetCode}`);
-
-    // Dispatch Email via Nodemailer if available
-    if (transporter) {
-      const mailOptions = {
-        from: `"Johannes Deliveries" <${EMAIL_USER}>`,
-        to: user.email,
-        subject: 'Password Reset Verification Code - Johannes Deliveries',
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e0e0e0; border-radius: 8px;">
-            <h2 style="color: #333;">Password Reset Request</h2>
-            <p>You requested to reset your password for <strong>Johannes Deliveries</strong>.</p>
-            <p>Your 6-digit verification code is:</p>
-            <div style="background-color: #f4f4f4; padding: 12px; font-size: 28px; font-weight: bold; letter-spacing: 6px; text-align: center; border-radius: 4px; margin: 20px 0; color: #1a73e8;">
-              ${resetCode}
-            </div>
-            <p style="color: #666; font-size: 13px;">This code will expire in 15 minutes. If you did not request this reset, you can safely ignore this email.</p>
-          </div>
-        `
-      };
-
-      try {
-        await transporter.sendMail(mailOptions);
-        return res.json({ 
-          success: true, 
-          message: 'Verification code has been sent to your email.' 
-        });
-      } catch (mailErr) {
-        console.error('Nodemailer Error:', mailErr);
-        return res.json({ 
-          success: true, 
-          message: 'Code generated, but email delivery failed. Check server log.',
-          devResetCode: resetCode 
-        });
-      }
-    }
-
-    // Fallback response if EMAIL_USER / EMAIL_PASS are not configured
-    res.json({ 
-      success: true, 
-      message: 'Reset code generated successfully.',
-      devResetCode: resetCode 
+    // Dispatch email
+    await transporter.sendMail({
+      from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Password Reset Verification Code - Johannes Deliveries',
+      text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
     });
 
+    res.json({ success: true, message: 'Verification code sent to email.' });
   } catch (err) {
-    console.error('Reset Code Request Error:', err);
-    res.status(500).json({ success: false, message: 'Server error generating reset code.' });
+    console.error('Password Reset Request Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to send reset code. Check server mail settings.' });
   }
 });
 
-// 5. Submit Reset Code & New Password
+// 5. SUBMIT RESET CODE & UPDATE PASSWORD
 app.post('/api/reset-password', async (req, res) => {
   try {
     const { email, resetCode, newPassword } = req.body;
 
     if (!email || !resetCode || !newPassword) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email, reset code, and new password are all required.' 
-      });
+      return res.status(400).json({ success: false, message: 'All fields are required.' });
     }
 
-    const user = await findUserByEmail(email);
+    // Find user with active, non-expired reset request
+    const user = await User.findOne({
+      email,
+      resetCodeExpires: { $gt: Date.now() }
+    });
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Account not found.' });
+    if (!user || !user.resetCode) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification code.' });
     }
 
-    if (!user.resetPasswordCode || user.resetPasswordCode !== String(resetCode).trim()) {
-      return res.status(400).json({ success: false, message: 'Invalid reset code.' });
+    // Compare code
+    const isCodeMatch = await bcrypt.compare(resetCode, user.resetCode);
+    if (!isCodeMatch) {
+      return res.status(400).json({ success: false, message: 'Invalid verification code.' });
     }
 
-    if (!user.resetPasswordExpires || new Date() > user.resetPasswordExpires) {
-      return res.status(400).json({ success: false, message: 'Reset code has expired. Please request a new one.' });
-    }
-
-    // Hash new password and clear tokens
+    // Save new password and clear fields
     user.password = await bcrypt.hash(newPassword, 10);
-    user.resetPasswordCode = null;
-    user.resetPasswordExpires = null;
+    user.resetCode = null;
+    user.resetCodeExpires = null;
     await user.save();
 
-    res.json({ success: true, message: 'Password reset successfully! You can now log in.' });
-
-  } catch (err) {
-    console.error('Password Reset Error:', err);
-    res.status(500).json({ success: false, message: 'Server error resetting password.' });
-  }
-});
-
-// 6. Seed Demo Users & Cleanup
-app.post('/api/seed-demo-users', async (req, res) => {
-  try {
-    await User.deleteMany({ $or: [{ password: { $exists: false } }, { password: null }, { password: "" }] });
-
-    const demoUsers = [
-      { email: 'customer', password: '1234', role: 'customer' },
-      { email: 'driver', password: '1234', role: 'driver' },
-      { email: 'merchant', password: '1234', role: 'merchant' },
-      { email: 'admin', password: '1234', role: 'admin' }
-    ];
-
-    for (const u of demoUsers) {
-      const hashedPassword = await bcrypt.hash(u.password, 10);
-      const safeInput = escapeRegExp(u.email);
-      await User.findOneAndUpdate(
-        { email: { $regex: new RegExp(`^${safeInput}$`, 'i') } },
-        { email: u.email, password: hashedPassword, role: u.role },
-        { upsert: true, new: true }
-      );
-    }
-
-    res.json({ success: true, message: 'Corrupted users removed & demo logins restored! Login with password "1234".' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Merchant Profile & Stats Routes
-app.get('/api/merchant/profile', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('email profilePicUrl bankDetails');
-    if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
-    res.json({ success: true, profile: user });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.patch('/api/merchant/profile', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const { profilePicUrl, bankName, accountName, accountNumber } = req.body;
-    const update = {};
-    if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
-    if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
-      update.bankDetails = { bankName, accountName, accountNumber };
-    }
-
-    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email profilePicUrl bankDetails');
-    res.json({ success: true, profile: user });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.get('/api/merchant/stats', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
-    const myItemNames = myItems.map(i => i.name);
-
-    const allOrders = await Order.find({ status: 'delivered' });
-    const myOrders = allOrders.filter(o =>
-      myItemNames.some(name => (o.item || '').includes(name))
-    );
-
-    const totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+    // Return active JWT token to grant instant access
+    const secret = process.env.JWT_SECRET || 'fallback_secret_key';
+    const token = jwt.sign({ id: user._id, role: user.role }, secret, { expiresIn: '7d' });
 
     res.json({
       success: true,
-      salesCount: myOrders.length,
-      totalRevenue
+      message: 'Password updated successfully.',
+      token,
+      redirectUrl: getRedirectUrlByRole(user.role)
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('Reset Password Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update password.' });
   }
 });
 
-// Catalog Routes
-app.get('/api/catalog', async (req, res) => {
-  try {
-    const items = await CatalogItem.find().sort({ createdAt: -1 });
-    res.json(items);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+// START SERVER
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Johannes Deliveries server running on port ${PORT}`);
 });
-
-app.get('/api/merchant/catalog', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const items = await CatalogItem.find({ merchantEmail: req.user.email }).sort({ createdAt: -1 });
-    res.json(items);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.post('/api/catalog', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const { name, price, description, imageUrl, optionGroups } = req.body;
-    const newItem = new CatalogItem({
-      name,
-      price,
-      description,
-      imageUrl,
-      optionGroups: optionGroups || [],
-      merchantEmail: req.user.email
-    });
-
-    await newItem.save();
-    res.status(201).json(newItem);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-});
-
-app.patch('/api/catalog/:id/stock', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const item = await CatalogItem.findById(req.params.id);
-    if (!item) return res.status(404).json({ message: 'Item not found' });
-    if (item.merchantEmail !== req.user.email) {
-      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
-    }
-
-    item.inStock = !item.inStock;
-    await item.save();
-    res.json(item);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Orders Routes
-app.get('/api/orders', async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.post('/api/orders', async (req, res) => {
-  try {
-    const newOrder = new Order(req.body);
-    await newOrder.save();
-    
-    const orders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', orders);
-
-    res.json({ success: true, order: newOrder });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
-
-app.patch('/api/orders/:id/assign', async (req, res) => {
-  try {
-    const { driverEmail } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { assignedDriver: driverEmail, status: 'assigned' },
-      { new: true }
-    );
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-    
-    const orders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', orders);
-
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.patch('/api/orders/:id/status', async (req, res) => {
-  try {
-    const { status } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    const orders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', orders);
-
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// WebSockets Fleet Tracking
-let activeDrivers = {};
-
-io.on('connection', (socket) => {
-  socket.on('driver_connect', (data) => {
-    if (data && data.driverId) {
-      activeDrivers[socket.id] = {
-        driverId: data.driverId,
-        lat: data.lat,
-        lng: data.lng
-      };
-      io.emit('update_fleet', Object.values(activeDrivers));
-    }
-  });
-
-  socket.id && socket.on('disconnect', () => {
-    delete activeDrivers[socket.id];
-    io.emit('update_fleet', Object.values(activeDrivers));
-  });
-});
-
-// Server Initialization
-mongoose.connect(MONGO_URI)
-  .then(async () => {
-    console.log('MongoDB connected successfully');
-    
-    const count = await User.countDocuments();
-    if (count === 0) {
-      console.log('Seeding demo accounts...');
-      const demoUsers = [
-        { email: 'customer', password: '1234', role: 'customer' },
-        { email: 'driver', password: '1234', role: 'driver' },
-        { email: 'merchant', password: '1234', role: 'merchant' },
-        { email: 'admin', password: '1234', role: 'admin' }
-      ];
-      for (const u of demoUsers) {
-        const hashedPassword = await bcrypt.hash(u.password, 10);
-        await User.create({ email: u.email, password: hashedPassword, role: u.role });
-      }
-    }
-
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-  });
