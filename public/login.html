@@ -1,226 +1,40 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - Johannes Deliveries</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { 
-      font-family: Arial, sans-serif; 
-      background: #f4f4f9; 
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      min-height: 100vh; 
-      margin: 0; 
-    }
-    .container {
-      background: white; 
-      padding: 30px; 
-      border-radius: 8px; 
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-      width: 360px; 
-    }
-    h2 { margin-top: 0; text-align: center; color: #333; }
-    .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 20px; }
-    label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
-    input, button { 
-      width: 100%; 
-      padding: 10px; 
-      margin-top: 5px; 
-      margin-bottom: 15px; 
-      border-radius: 4px;
-      border: 1px solid #ccc;
-    }
-    button { 
-      background: #007bff; 
-      color: white; 
-      border: none; 
-      cursor: pointer; 
-      font-weight: bold; 
-      font-size: 16px;
-    }
-    button:hover { background: #0056b3; }
-    button:disabled { background: #6c757d; cursor: not-allowed; }
-    .error { color: #d9534f; font-size: 14px; text-align: center; margin-bottom: 10px; }
-    .hint { 
-      font-size: 12px; 
-      color: #555; 
-      background: #eef2f7; 
-      padding: 10px; 
-      border-radius: 4px; 
-      margin-bottom: 15px; 
-      line-height: 1.4;
-    }
-    p.footer-link { text-align: center; margin-top: 15px; font-size: 14px; }
-    a { color: #007bff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Johannes Deliveries</h2>
-    <div class="subtitle">Portal Login</div>
-
-    <div class="hint">
-      <b>Demo logins:</b><br>
-      • customer / 1234<br>
-      • driver / 1234<br>
-      • merchant / 1234<br>
-      • admin / 1234
-    </div>
-
-    <div id="errorMsg" class="error"></div>
-
-    <form id="loginForm">
-      <label for="username">Username / Email:</label>
-      <input type="text" id="username" required placeholder="e.g. driver">
-
-      <label for="password">Password:</label>
-      <input type="password" id="password" required placeholder="1234">
-
-      <button type="submit" id="submitBtn">Login</button>
-    </form>
-<div style="text-align: right; margin-top: 8px;">
-  <a href="#" id="forgotPasswordBtn" style="color: #1a73e8; text-decoration: none; font-size: 14px;">Forgot Password?</a>
-</div>
-
-<!-- Add this Password Reset Modal right before </body> -->
-<div id="resetPasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
-  <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-    
-    <!-- Step 1: Request Code -->
-    <div id="stepRequestCode">
-      <h3 style="margin-top: 0;">Reset Password</h3>
-      <p style="font-size: 14px; color: #666;">Enter your registered email address to receive a 6-digit verification code.</p>
-      <input type="email" id="resetEmailInput" placeholder="Enter your email" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-        <button type="button" id="btnSendCode" onclick="handleRequestCode()" style="padding: 8px 15px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Send Code</button>
-      </div>
-    </div>
-
-    <!-- Step 2: Submit Code & New Password -->
-    <div id="stepSubmitReset" style="display: none;">
-      <h3 style="margin-top: 0;">Enter Reset Code</h3>
-      <p style="font-size: 14px; color: #666;">Check your email for the 6-digit code.</p>
-      <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" style="width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box;" />
-      <input type="password" id="newPasswordInput" placeholder="Enter new password" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-        <button type="button" id="btnResetPassword" onclick="handleResetPassword()" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Password</button>
-      </div>
-    </div>
-
-    <p id="resetModalStatus" style="margin-top: 15px; font-size: 13px; font-weight: bold; text-align: center; color: #d9534f;"></p>
-  </div>
-</div>
-    <p class="footer-link">Don't have an account? <a href="register.html">Register here</a></p>
-  </div>
-
-  <script src="/js/config.js"></script>
-  <script>
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      const errorDiv = document.getElementById('errorMsg');
-      const submitBtn = document.getElementById('submitBtn');
-
-      errorDiv.innerText = '';
-      submitBtn.disabled = true;
-      submitBtn.innerText = 'Logging in...';
-
-      try {
-        const baseUrl = window.API_BASE || '';
-        const res = await fetch(`${baseUrl}/api/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: username, password })
-        });
-        const data = await res.json();
-
-        if (res.ok && (data.success || data.token)) {
-          const token = data.token;
-          
-          if (typeof setAuthToken === 'function') {
-            setAuthToken(token);
-          }
-          localStorage.setItem('jwt_token', token);
-          localStorage.setItem('token', token);
-          
-          if (data.user) {
-            localStorage.setItem('user', JSON.stringify(data.user));
-          }
-
-          let targetPage = '';
-
-          if (data.redirectUrl) {
-            targetPage = data.redirectUrl.replace(/^https?:\/\/[^\/]+/, '');
-          } else if (data.role || (data.user && data.user.role)) {
-            const role = (data.role || data.user.role).toLowerCase();
-            targetPage = `/${role}.html`;
-          } else {
-            const lowerUser = username.toLowerCase();
-            if (['admin', 'driver', 'merchant', 'customer'].includes(lowerUser)) {
-              targetPage = `/${lowerUser}.html`;
-            } else {
-              targetPage = '/customer.html';
-            }
-          }
-
-          if (!targetPage.startsWith('/') && !targetPage.startsWith('http')) {
-            targetPage = '/' + targetPage;
-          }
-
-          window.location.replace(targetPage);
-
-        } else {
-          submitBtn.disabled = false;
-          submitBtn.innerText = 'Login';
-          errorDiv.innerText = data.message || 'Login failed. Please check your credentials.';
-        }
-      } catch (err) {
-        console.error('Login error:', err);
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Login';
-        errorDiv.innerText = 'Server connection error. Please check network or Render status.';
-      }
-    });
-    <html lang="en">
-<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Johannes Deliveries</title>
 </head>
-<body>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px;">
 
-  <!-- Your Existing Login Form Container -->
-  <div style="max-width: 400px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
-    <h2>Login</h2>
+  <!-- Login Box Container -->
+  <div style="max-width: 400px; margin: 60px auto; padding: 30px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <h2 style="margin-top: 0; color: #333; text-align: center;">Johannes Deliveries</h2>
+    <h4 style="color: #666; text-align: center; margin-bottom: 20px;">Sign In</h4>
+    
     <form id="loginForm">
       <div style="margin-bottom: 15px;">
-        <label for="email">Email / Username:</label>
-        <input type="text" id="email" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" />
+        <label for="email" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Email / Username:</label>
+        <input type="text" id="email" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
       </div>
 
       <div style="margin-bottom: 10px;">
-        <label for="password">Password:</label>
-        <input type="password" id="password" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" />
+        <label for="password" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Password:</label>
+        <input type="password" id="password" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
       </div>
 
-      <!-- Forgot Password Trigger Link -->
-      <div style="text-align: right; margin-bottom: 15px;">
+      <!-- Forgot Password Link -->
+      <div style="text-align: right; margin-bottom: 20px;">
         <a href="#" id="forgotPasswordBtn" style="color: #1a73e8; text-decoration: none; font-size: 14px;">Forgot Password?</a>
       </div>
 
-      <button type="submit" style="width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Login</button>
+      <button type="submit" id="loginBtn" style="width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer;">Login</button>
     </form>
+
+    <p id="loginStatus" style="margin-top: 15px; font-size: 14px; text-align: center; font-weight: bold;"></p>
   </div>
 
-  <!-- Password Reset Modal Popup -->
+  <!-- Password Reset Modal -->
   <div id="resetPasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
     <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
       
@@ -228,22 +42,22 @@
       <div id="stepRequestCode">
         <h3 style="margin-top: 0;">Reset Password</h3>
         <p style="font-size: 14px; color: #666;">Enter your registered email address to receive a 6-digit verification code.</p>
-        <input type="email" id="resetEmailInput" placeholder="Enter your email" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
+        <input type="email" id="resetEmailInput" placeholder="Enter your email" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-          <button type="button" id="btnSendCode" onclick="handleRequestCode()" style="padding: 8px 15px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Send Code</button>
+          <button type="button" id="btnCancelStep1" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnSendCode" style="padding: 8px 15px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Send Code</button>
         </div>
       </div>
 
       <!-- Step 2: Submit Code & New Password -->
       <div id="stepSubmitReset" style="display: none;">
         <h3 style="margin-top: 0;">Enter Reset Code</h3>
-        <p style="font-size: 14px; color: #666;">Check your email for the 6-digit verification code.</p>
-        <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" style="width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box;" />
-        <input type="password" id="newPasswordInput" placeholder="Enter new password" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;" />
+        <p style="font-size: 14px; color: #666;">Check your email for the 6-digit code.</p>
+        <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <input type="password" id="newPasswordInput" placeholder="Enter new password" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button type="button" onclick="closeResetModal()" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-          <button type="button" id="btnResetPassword" onclick="handleResetPassword()" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Password</button>
+          <button type="button" id="btnCancelStep2" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnResetPassword" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Password</button>
         </div>
       </div>
 
@@ -251,109 +65,156 @@
     </div>
   </div>
 
-  <!-- Inline Script for Reset Password Logic -->
   <script>
-    // Modal Visibility Control
-    document.getElementById('forgotPasswordBtn')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      document.getElementById('resetPasswordModal').style.display = 'flex';
-      document.getElementById('stepRequestCode').style.display = 'block';
-      document.getElementById('stepSubmitReset').style.display = 'none';
-      document.getElementById('resetModalStatus').innerText = '';
-    });
+    document.addEventListener('DOMContentLoaded', () => {
+      const loginForm = document.getElementById('loginForm');
+      const loginStatus = document.getElementById('loginStatus');
+      const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+      const resetPasswordModal = document.getElementById('resetPasswordModal');
+      const btnSendCode = document.getElementById('btnSendCode');
+      const btnResetPassword = document.getElementById('btnResetPassword');
+      const btnCancelStep1 = document.getElementById('btnCancelStep1');
+      const btnCancelStep2 = document.getElementById('btnCancelStep2');
+      const resetModalStatus = document.getElementById('resetModalStatus');
 
-    function closeResetModal() {
-      document.getElementById('resetPasswordModal').style.display = 'none';
-    }
-
-    // Step 1: Send Request to Server for Reset Code
-    async function handleRequestCode() {
-      const email = document.getElementById('resetEmailInput').value.trim();
-      const statusEl = document.getElementById('resetModalStatus');
-
-      if (!email) {
-        statusEl.style.color = '#d9534f';
-        statusEl.innerText = 'Please enter your email address.';
-        return;
+      // Helper to close reset modal
+      function closeModal() {
+        resetPasswordModal.style.display = 'none';
+        resetModalStatus.innerText = '';
       }
 
-      statusEl.style.color = '#333';
-      statusEl.innerText = 'Sending request...';
+      btnCancelStep1.addEventListener('click', closeModal);
+      btnCancelStep2.addEventListener('click', closeModal);
 
-      try {
-        const res = await fetch('/api/request-password-reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
+      // --- 1. HANDLE LOGIN SUBMISSION ---
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
 
-        const data = await res.json();
+        loginStatus.style.color = '#333';
+        loginStatus.innerText = 'Logging in...';
 
-        if (data.success) {
-          statusEl.style.color = 'green';
-          statusEl.innerText = 'Code generated! Check your email.';
-          
-          if (data.devResetCode) {
-            console.log('DEV RESET CODE:', data.devResetCode);
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            localStorage.setItem('token', data.token);
+            loginStatus.style.color = 'green';
+            loginStatus.innerText = 'Login successful! Redirecting...';
+            setTimeout(() => {
+              window.location.href = data.redirectUrl || '/customer.html';
+            }, 1000);
+          } else {
+            loginStatus.style.color = '#d9534f';
+            loginStatus.innerText = data.message || 'Invalid credentials.';
           }
-
-          setTimeout(() => {
-            document.getElementById('stepRequestCode').style.display = 'none';
-            document.getElementById('stepSubmitReset').style.display = 'block';
-            statusEl.innerText = '';
-          }, 1200);
-
-        } else {
-          statusEl.style.color = '#d9534f';
-          statusEl.innerText = data.message || 'Error sending request.';
+        } catch (err) {
+          console.error(err);
+          loginStatus.style.color = '#d9534f';
+          loginStatus.innerText = 'Server error. Please try again.';
         }
-      } catch (err) {
-        statusEl.style.color = '#d9534f';
-        statusEl.innerText = 'Server error. Please try again.';
-      }
-    }
+      });
 
-    // Step 2: Submit Code & Update Password
-    async function handleResetPassword() {
-      const email = document.getElementById('resetEmailInput').value.trim();
-      const resetCode = document.getElementById('resetCodeInput').value.trim();
-      const newPassword = document.getElementById('newPasswordInput').value.trim();
-      const statusEl = document.getElementById('resetModalStatus');
+      // --- 2. OPEN RESET MODAL ---
+      forgotPasswordBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        resetPasswordModal.style.display = 'flex';
+        document.getElementById('stepRequestCode').style.display = 'block';
+        document.getElementById('stepSubmitReset').style.display = 'none';
+        resetModalStatus.innerText = '';
+      });
 
-      if (!resetCode || !newPassword) {
-        statusEl.style.color = '#d9534f';
-        statusEl.innerText = 'Please fill in both the code and your new password.';
-        return;
-      }
+      // --- 3. REQUEST RESET CODE ---
+      btnSendCode.addEventListener('click', async () => {
+        const email = document.getElementById('resetEmailInput').value.trim();
 
-      statusEl.style.color = '#333';
-      statusEl.innerText = 'Updating password...';
-
-      try {
-        const res = await fetch('/api/reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, resetCode, newPassword })
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          statusEl.style.color = 'green';
-          statusEl.innerText = 'Password reset successful!';
-          setTimeout(() => {
-            closeResetModal();
-            alert('Password updated successfully. You can now log in!');
-          }, 1500);
-        } else {
-          statusEl.style.color = '#d9534f';
-          statusEl.innerText = data.message || 'Failed to reset password.';
+        if (!email) {
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Please enter your email.';
+          return;
         }
-      } catch (err) {
-        statusEl.style.color = '#d9534f';
-        statusEl.innerText = 'Server error. Please try again.';
-      }
-    }
+
+        resetModalStatus.style.color = '#333';
+        resetModalStatus.innerText = 'Sending request...';
+
+        try {
+          const res = await fetch('/api/request-password-reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            resetModalStatus.style.color = 'green';
+            resetModalStatus.innerText = 'Code generated! Moving to step 2...';
+
+            setTimeout(() => {
+              document.getElementById('stepRequestCode').style.display = 'none';
+              document.getElementById('stepSubmitReset').style.display = 'block';
+              resetModalStatus.innerText = '';
+            }, 1000);
+          } else {
+            resetModalStatus.style.color = '#d9534f';
+            resetModalStatus.innerText = data.message || 'Error processing request.';
+          }
+        } catch (err) {
+          console.error(err);
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Server error. Check server logs.';
+        }
+      });
+
+      // --- 4. SUBMIT RESET CODE & NEW PASSWORD ---
+      btnResetPassword.addEventListener('click', async () => {
+        const email = document.getElementById('resetEmailInput').value.trim();
+        const resetCode = document.getElementById('resetCodeInput').value.trim();
+        const newPassword = document.getElementById('newPasswordInput').value.trim();
+
+        if (!resetCode || !newPassword) {
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Please enter both the reset code and new password.';
+          return;
+        }
+
+        resetModalStatus.style.color = '#333';
+        resetModalStatus.innerText = 'Updating password...';
+
+        try {
+          const res = await fetch('/api/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, resetCode, newPassword })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            resetModalStatus.style.color = 'green';
+            resetModalStatus.innerText = 'Password updated successfully!';
+            setTimeout(() => {
+              closeModal();
+              alert('Password updated! You can now log in with your new password.');
+            }, 1200);
+          } else {
+            resetModalStatus.style.color = '#d9534f';
+            resetModalStatus.innerText = data.message || 'Failed to reset password.';
+          }
+        } catch (err) {
+          console.error(err);
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Server error. Please try again.';
+        }
+      });
+    });
   </script>
 </body>
 </html>
