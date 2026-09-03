@@ -42,9 +42,11 @@
       const password = document.getElementById('password').value;
       const errorDiv = document.getElementById('errorMsg');
       const submitBtn = document.getElementById('submitBtn');
+
       errorDiv.innerText = '';
       submitBtn.disabled = true;
       submitBtn.innerText = 'Logging in...';
+
       try {
         const baseUrl = window.API_BASE || '';
         const res = await fetch(`${baseUrl}/api/login`, {
@@ -54,17 +56,47 @@
         });
         const data = await res.json();
 
-        // TEMPORARY DEBUG LINE - shows exactly what the server sent back.
-        // Remove this line once we've figured out the issue.
-        alert('DEBUG server response: ' + JSON.stringify(data));
-
-        if (res.ok && data.success && data.token) {
+        if (res.ok && (data.success || data.token)) {
+          const token = data.token;
+          
+          // 1. Save Token & User Info
           if (typeof setAuthToken === 'function') {
-            setAuthToken(data.token);
-          } else {
-            localStorage.setItem('jwt_token', data.token);
+            setAuthToken(token);
           }
-          window.location.href = data.redirectUrl || '/customer.html';
+          localStorage.setItem('jwt_token', token);
+          localStorage.setItem('token', token);
+          
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+          }
+
+          // 2. Determine target redirect page
+          let targetPage = '';
+
+          if (data.redirectUrl) {
+            // Strip any protocol/domain if backend sent full URL
+            targetPage = data.redirectUrl.replace(/^https?:\/\/[^\/]+/, '');
+          } else if (data.role || (data.user && data.user.role)) {
+            const role = (data.role || data.user.role).toLowerCase();
+            targetPage = `/${role}.html`;
+          } else {
+            // Role fallback based on demo inputs
+            const lowerUser = username.toLowerCase();
+            if (['admin', 'driver', 'merchant', 'customer'].includes(lowerUser)) {
+              targetPage = `/${lowerUser}.html`;
+            } else {
+              targetPage = '/customer.html';
+            }
+          }
+
+          // Ensure relative leading slash
+          if (!targetPage.startsWith('/') && !targetPage.startsWith('http')) {
+            targetPage = '/' + targetPage;
+          }
+
+          // 3. Perform Page Redirection
+          window.location.replace(targetPage);
+
         } else {
           submitBtn.disabled = false;
           submitBtn.innerText = 'Login';
