@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="/js/config.js"></script>
   <script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
@@ -12,7 +13,7 @@
 
     try {
       // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
+      const res = await fetch((window.API_BASE || '') + '/api/check-session', {
         method: 'GET',
         headers: {
           'Authorization': 'Bearer ' + token,
@@ -180,7 +181,7 @@
         loginStatus.innerText = 'Logging in...';
 
         try {
-          const res = await fetch('/api/login', {
+          const res = await fetch((window.API_BASE || '') + '/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
@@ -222,7 +223,7 @@
         regStatus.innerText = 'Creating account...';
 
         try {
-          const res = await fetch('/api/register', {
+          const res = await fetch((window.API_BASE || '') + '/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, role })
@@ -281,7 +282,7 @@
         resetModalStatus.innerText = 'Sending request...';
 
         try {
-          const res = await fetch('/api/request-password-reset', {
+          const res = await fetch((window.API_BASE || '') + '/api/request-password-reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -324,7 +325,7 @@
         resetModalStatus.innerText = 'Updating password...';
 
         try {
-          const res = await fetch('/api/reset-password', {
+          const res = await fetch((window.API_BASE || '') + '/api/reset-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, resetCode, newPassword })
