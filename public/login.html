@@ -58,7 +58,7 @@
         });
 
         const data = await res.json();
-
+alert('DEBUG: ' + JSON.stringify(data));
         if (res.ok && data.success && data.token) {
           if (typeof setAuthToken === 'function') {
             setAuthToken(data.token);
