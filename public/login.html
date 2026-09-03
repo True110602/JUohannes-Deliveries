@@ -1,1 +1,119 @@
+    .error { color: #d9534f; font-size: 14px; text-align: center; margin-bottom: 10px; }
+    .hint { 
+      font-size: 12px; 
+      color: #555; 
+      background: #eef2f7; 
+      padding: 10px; 
+      border-radius: 4px; 
+      margin-bottom: 15px; 
+      line-height: 1.4;
+    }
+    p.footer-link { text-align: center; margin-top: 15px; font-size: 14px; }
+    a { color: #007bff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Johannes Deliveries</h2>
+    <div class="subtitle">Portal Login</div>
 
+    <div class="hint">
+      <b>Demo logins:</b><br>
+      • customer / 1234<br>
+      • driver / 1234<br>
+      • merchant / 1234<br>
+      • admin / 1234
+    </div>
+
+    <div id="errorMsg" class="error"></div>
+
+    <form id="loginForm">
+      <label for="username">Username / Email:</label>
+      <input type="text" id="username" required placeholder="e.g. driver">
+
+      <label for="password">Password:</label>
+      <input type="password" id="password" required placeholder="1234">
+
+      <button type="submit" id="submitBtn">Login</button>
+    </form>
+
+    <p class="footer-link">Don't have an account? <a href="register.html">Register here</a></p>
+  </div>
+
+  <script src="/js/config.js"></script>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('errorMsg');
+      const submitBtn = document.getElementById('submitBtn');
+
+      errorDiv.innerText = '';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Logging in...';
+
+      try {
+        const baseUrl = window.API_BASE || '';
+        const res = await fetch(`${baseUrl}/api/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: username, password })
+        });
+        const data = await res.json();
+
+        if (res.ok && (data.success || data.token)) {
+          const token = data.token;
+          
+          // 1. Store auth credentials for dashboard sessions
+          if (typeof setAuthToken === 'function') {
+            setAuthToken(token);
+          }
+          localStorage.setItem('jwt_token', token);
+          localStorage.setItem('token', token);
+          
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+          }
+
+          // 2. Determine target path on Render
+          let targetPage = '';
+
+          if (data.redirectUrl) {
+            targetPage = data.redirectUrl.replace(/^https?:\/\/[^\/]+/, '');
+          } else if (data.role || (data.user && data.user.role)) {
+            const role = (data.role || data.user.role).toLowerCase();
+            targetPage = `/${role}.html`;
+          } else {
+            const lowerUser = username.toLowerCase();
+            if (['admin', 'driver', 'merchant', 'customer'].includes(lowerUser)) {
+              targetPage = `/${lowerUser}.html`;
+            } else {
+              targetPage = '/customer.html';
+            }
+          }
+
+          if (!targetPage.startsWith('/') && !targetPage.startsWith('http')) {
+            targetPage = '/' + targetPage;
+          }
+
+          // 3. Redirect to destination interface
+          window.location.replace(targetPage);
+
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Login';
+          errorDiv.innerText = data.message || 'Login failed. Please check your credentials.';
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Login';
+        errorDiv.innerText = 'Server connection error. Please check network or Render status.';
+      }
+    });
+  </script>
+</body>
+</html>
