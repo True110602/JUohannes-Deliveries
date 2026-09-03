@@ -16,12 +16,13 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'johannes_deliveries_secret_key_2026';
 
 // Database Connection String Check
-const MONGO_URI = process.env.MONGODB_URI;
+// Checks process.env for MONGODB_URL first, falling back to MONGODB_URI or MONGO_URI
+const MONGO_URI = process.env.MONGODB_URL || process.env.MONGODB_URI || process.env.MONGO_URI;
 
 if (!MONGO_URI) {
   console.error('------------------------------------------------------------');
   console.error('CRITICAL ERROR: No MongoDB connection string found!');
-  console.error('Please check Environment Variables on Render.');
+  console.error('Please check Environment Variables on Render (MONGODB_URL).');
   console.error('------------------------------------------------------------');
   process.exit(1);
 }
