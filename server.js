@@ -171,6 +171,7 @@ app.post('/api/login', async (req, res) => {
       redirectUrl: redirectMap[user.role] || '/customer.html'
     });
   } catch (err) {
+    console.error('Login error:', err);
     res.status(500).json({ success: false, message: 'Server login error.' });
   }
 });
