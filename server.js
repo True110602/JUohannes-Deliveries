@@ -608,4 +608,19 @@ mongoose.connect(MONGO_URI)
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
+    app.get('/api/check-session', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ loggedIn: false, message: 'No token provided' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ loggedIn: false, message: 'Invalid or expired token' });
+    }
+    res.json({ loggedIn: true, user });
+  });
+});
   });
