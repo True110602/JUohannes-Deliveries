@@ -4,7 +4,369 @@
   <script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/config.js"></script>
+  <script>
+  (async function verifyAuth() {
+    const token = localStorage.getItem('token');
 
+    // 1. If no token in local storage, remain on login page
+    if (!token) {
+      return;
+    }
+
+    try {
+      // 2. Validate token against server endpoint
+      const res = await fetch((window.API_BASE || '') + '/api/check-session', {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.loggedIn) {
+        // Active token found -> Redirect directly to designated page
+        window.location.href = data.redirectUrl || '/customer.html';
+      } else {
+        // Token expired or invalid -> Clear local storage
+        localStorage.removeItem('token');
+      }
+    } catch (err) {
+      console.error('Session validation error:', err);
+    }
+  })();
+</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Johannes Deliveries</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px;">
+
+  <!-- Main Auth Box -->
+  <div style="max-width: 400px; margin: 50px auto; padding: 30px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <h2 style="margin-top: 0; color: #333; text-align: center;">Johannes Deliveries</h2>
+    <h4 style="color: #666; text-align: center; margin-bottom: 20px;">Sign In to Your Account</h4>
+    
+    <form id="loginForm">
+      <div style="margin-bottom: 15px;">
+        <label for="email" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Email / Username:</label>
+        <input type="text" id="email" required placeholder="Enter your email or username" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+      </div>
+
+      <div style="margin-bottom: 10px;">
+        <label for="password" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Password:</label>
+        <input type="password" id="password" required placeholder="Enter your password" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+      </div>
+
+      <!-- Forgot Password Link -->
+      <div style="text-align: right; margin-bottom: 20px;">
+        <a href="#" id="forgotPasswordBtn" style="color: #1a73e8; text-decoration: none; font-size: 14px;">Forgot Password?</a>
+      </div>
+
+      <button type="submit" id="loginBtn" style="width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer;">Login</button>
+    </form>
+
+    <p id="loginStatus" style="margin-top: 15px; font-size: 14px; text-align: center; font-weight: bold;"></p>
+
+    <hr style="margin: 25px 0 20px 0; border: 0; border-top: 1px solid #eee;" />
+
+    <!-- Registration Redirect Option -->
+    <div style="text-align: center; font-size: 14px; color: #555;">
+      Don't have an account? <a href="#" id="showRegisterBtn" style="color: #28a745; font-weight: bold; text-decoration: none;">Register Here</a>
+    </div>
+  </div>
+
+  <!-- Registration Modal / Form Popup -->
+  <div id="registerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+      <h3 style="margin-top: 0; color: #333;">Create New Account</h3>
+      
+      <form id="registerForm">
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Email / Username:</label>
+          <input type="text" id="regEmail" required placeholder="Email or Username" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Password:</label>
+          <input type="password" id="regPassword" required placeholder="Password" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Account Role:</label>
+          <select id="regRole" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+            <option value="customer">Customer</option>
+            <option value="driver">Driver</option>
+            <option value="merchant">Merchant</option>
+          </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="btnCancelRegister" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="submit" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Register</button>
+        </div>
+      </form>
+
+      <p id="regStatus" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></p>
+    </div>
+  </div>
+
+  <!-- Password Reset Modal -->
+  <div id="resetPasswordModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+      
+      <!-- Step 1: Request Code -->
+      <div id="stepRequestCode">
+        <h3 style="margin-top: 0;">Reset Password</h3>
+        <p style="font-size: 14px; color: #666;">Enter your registered email address to receive a 6-digit verification code.</p>
+        <input type="email" id="resetEmailInput" placeholder="Enter your email" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="btnCancelStep1" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnSendCode" style="padding: 8px 15px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer;">Send Code</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Submit Code & New Password -->
+      <div id="stepSubmitReset" style="display: none;">
+        <h3 style="margin-top: 0;">Enter Reset Code</h3>
+        <p style="font-size: 14px; color: #666;">Check your email for the 6-digit code.</p>
+        <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <input type="password" id="newPasswordInput" placeholder="Enter new password" style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="btnCancelStep2" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnResetPassword" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset Password</button>
+        </div>
+      </div>
+
+      <p id="resetModalStatus" style="margin-top: 15px; font-size: 13px; font-weight: bold; text-align: center; color: #d9534f;"></p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Form & Modal Elements
+      const loginForm = document.getElementById('loginForm');
+      const loginStatus = document.getElementById('loginStatus');
+      const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+      const showRegisterBtn = document.getElementById('showRegisterBtn');
+      const registerModal = document.getElementById('registerModal');
+      const registerForm = document.getElementById('registerForm');
+      const regStatus = document.getElementById('regStatus');
+      const btnCancelRegister = document.getElementById('btnCancelRegister');
+      const resetPasswordModal = document.getElementById('resetPasswordModal');
+      const btnSendCode = document.getElementById('btnSendCode');
+      const btnResetPassword = document.getElementById('btnResetPassword');
+      const btnCancelStep1 = document.getElementById('btnCancelStep1');
+      const btnCancelStep2 = document.getElementById('btnCancelStep2');
+      const resetModalStatus = document.getElementById('resetModalStatus');
+
+      // Helpers
+      function closeModals() {
+        registerModal.style.display = 'none';
+        resetPasswordModal.style.display = 'none';
+        regStatus.innerText = '';
+        resetModalStatus.innerText = '';
+      }
+
+      btnCancelRegister.addEventListener('click', closeModals);
+      btnCancelStep1.addEventListener('click', closeModals);
+      btnCancelStep2.addEventListener('click', closeModals);
+
+      // --- 1. LOGIN ---
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        loginStatus.style.color = '#333';
+        loginStatus.innerText = 'Logging in...';
+
+        try {
+          const res = await fetch((window.API_BASE || '') + '/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+
+          const data = await res.json();
+
+          if (data.success && data.token) {
+            localStorage.setItem('token', data.token);
+            loginStatus.style.color = 'green';
+            loginStatus.innerText = 'Login successful! Redirecting...';
+            setTimeout(() => {
+              window.location.href = data.redirectUrl || '/customer.html';
+            }, 1000);
+          } else {
+            loginStatus.style.color = '#d9534f';
+            loginStatus.innerText = data.message || 'Invalid credentials.';
+          }
+        } catch (err) {
+          console.error(err);
+          loginStatus.style.color = '#d9534f';
+          loginStatus.innerText = 'Server error. Please try again.';
+        }
+      });
+
+      // --- 2. REGISTER ACCOUNT ---
+      showRegisterBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        registerModal.style.display = 'flex';
+      });
+
+      registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('regEmail').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const role = document.getElementById('regRole').value;
+
+        regStatus.style.color = '#333';
+        regStatus.innerText = 'Creating account...';
+
+        try {
+          const res = await fetch((window.API_BASE || '') + '/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, role })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            // Save token directly if returned on register
+            if (data.token) {
+              localStorage.setItem('token', data.token);
+            }
+            regStatus.style.color = 'green';
+            regStatus.innerText = 'Account created! Redirecting...';
+            setTimeout(() => {
+              closeModals();
+              if (data.token) {
+                window.location.href = data.redirectUrl || '/customer.html';
+              } else {
+                document.getElementById('email').value = email;
+                document.getElementById('password').value = password;
+                loginStatus.style.color = 'green';
+                loginStatus.innerText = 'Account ready. Click Login below!';
+              }
+            }, 1200);
+          } else {
+            regStatus.style.color = '#d9534f';
+            regStatus.innerText = data.message || 'Registration failed.';
+          }
+        } catch (err) {
+          console.error(err);
+          regStatus.style.color = '#d9534f';
+          regStatus.innerText = 'Server error registering user.';
+        }
+      });
+
+      // --- 3. FORGOT PASSWORD ---
+      forgotPasswordBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        resetPasswordModal.style.display = 'flex';
+        document.getElementById('stepRequestCode').style.display = 'block';
+        document.getElementById('stepSubmitReset').style.display = 'none';
+        resetModalStatus.innerText = '';
+      });
+
+      btnSendCode.addEventListener('click', async () => {
+        const email = document.getElementById('resetEmailInput').value.trim();
+
+        if (!email) {
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Please enter your email.';
+          return;
+        }
+
+        resetModalStatus.style.color = '#333';
+        resetModalStatus.innerText = 'Sending request...';
+
+        try {
+          const res = await fetch((window.API_BASE || '') + '/api/request-password-reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            resetModalStatus.style.color = 'green';
+            resetModalStatus.innerText = 'Code generated! Moving to step 2...';
+
+            setTimeout(() => {
+              document.getElementById('stepRequestCode').style.display = 'none';
+              document.getElementById('stepSubmitReset').style.display = 'block';
+              resetModalStatus.innerText = '';
+            }, 1000);
+          } else {
+            resetModalStatus.style.color = '#d9534f';
+            resetModalStatus.innerText = data.message || 'Error processing request.';
+          }
+        } catch (err) {
+          console.error(err);
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Server error. Check server logs.';
+        }
+      });
+
+      btnResetPassword.addEventListener('click', async () => {
+        const email = document.getElementById('resetEmailInput').value.trim();
+        const resetCode = document.getElementById('resetCodeInput').value.trim();
+        const newPassword = document.getElementById('newPasswordInput').value.trim();
+
+        if (!resetCode || !newPassword) {
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Please enter both the code and new password.';
+          return;
+        }
+
+        resetModalStatus.style.color = '#333';
+        resetModalStatus.innerText = 'Updating password...';
+
+        try {
+          const res = await fetch((window.API_BASE || '') + '/api/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, resetCode, newPassword })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            if (data.token) {
+              localStorage.setItem('token', data.token);
+            }
+            resetModalStatus.style.color = 'green';
+            resetModalStatus.innerText = 'Password updated successfully!';
+            setTimeout(() => {
+              closeModals();
+              if (data.token) {
+                window.location.href = data.redirectUrl || '/customer.html';
+              } else {
+                alert('Password updated! You can now log in.');
+              }
+            }, 1200);
+          } else {
+            resetModalStatus.style.color = '#d9534f';
+            resetModalStatus.innerText = data.message || 'Failed to reset password.';
+          }
+        } catch (err) {
+          console.error(err);
+          resetModalStatus.style.color = '#d9534f';
+          resetModalStatus.innerText = 'Server error. Please try again.';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
     // 1. If no token in local storage, remain on login page
     if (!token) {
       return;
