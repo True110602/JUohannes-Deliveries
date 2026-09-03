@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Johannes Deliveries - Login Portal</title>
+  <title>Login - Johannes Deliveries</title>
   <style>
     * { box-sizing: border-box; }
     body { 
@@ -112,7 +112,6 @@
         if (res.ok && (data.success || data.token)) {
           const token = data.token;
           
-          // 1. Store auth credentials for dashboard sessions
           if (typeof setAuthToken === 'function') {
             setAuthToken(token);
           }
@@ -123,7 +122,6 @@
             localStorage.setItem('user', JSON.stringify(data.user));
           }
 
-          // 2. Determine target path on Render
           let targetPage = '';
 
           if (data.redirectUrl) {
@@ -144,7 +142,6 @@
             targetPage = '/' + targetPage;
           }
 
-          // 3. Redirect to destination interface
           window.location.replace(targetPage);
 
         } else {
