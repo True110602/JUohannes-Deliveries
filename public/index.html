@@ -1,6 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+  (async function verifyAuth() {
+    const token = localStorage.getItem('token');
+
+    // 1. If no token in local storage, remain on login page
+    if (!token) {
+      return;
+    }
+
+    try {
+      // 2. Validate token against server endpoint
+      const res = await fetch('/api/check-session', {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.loggedIn) {
+        // Active token found -> Redirect directly to designated page
+        window.location.href = data.redirectUrl || '/customer.html';
+      } else {
+        // Token expired or invalid -> Clear local storage
+        localStorage.removeItem('token');
+      }
+    } catch (err) {
+      console.error('Session validation error:', err);
+    }
+  })();
+</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Johannes Deliveries</title>
@@ -155,7 +188,7 @@
 
           const data = await res.json();
 
-          if (data.success) {
+          if (data.success && data.token) {
             localStorage.setItem('token', data.token);
             loginStatus.style.color = 'green';
             loginStatus.innerText = 'Login successful! Redirecting...';
@@ -198,14 +231,22 @@
           const data = await res.json();
 
           if (data.success) {
+            // Save token directly if returned on register
+            if (data.token) {
+              localStorage.setItem('token', data.token);
+            }
             regStatus.style.color = 'green';
-            regStatus.innerText = 'Account created! Closing modal...';
+            regStatus.innerText = 'Account created! Redirecting...';
             setTimeout(() => {
               closeModals();
-              document.getElementById('email').value = email;
-              document.getElementById('password').value = password;
-              loginStatus.style.color = 'green';
-              loginStatus.innerText = 'Account ready. Click Login below!';
+              if (data.token) {
+                window.location.href = data.redirectUrl || '/customer.html';
+              } else {
+                document.getElementById('email').value = email;
+                document.getElementById('password').value = password;
+                loginStatus.style.color = 'green';
+                loginStatus.innerText = 'Account ready. Click Login below!';
+              }
             }, 1200);
           } else {
             regStatus.style.color = '#d9534f';
@@ -292,11 +333,18 @@
           const data = await res.json();
 
           if (data.success) {
+            if (data.token) {
+              localStorage.setItem('token', data.token);
+            }
             resetModalStatus.style.color = 'green';
             resetModalStatus.innerText = 'Password updated successfully!';
             setTimeout(() => {
               closeModals();
-              alert('Password updated! You can now log in.');
+              if (data.token) {
+                window.location.href = data.redirectUrl || '/customer.html';
+              } else {
+                alert('Password updated! You can now log in.');
+              }
             }, 1200);
           } else {
             resetModalStatus.style.color = '#d9534f';
