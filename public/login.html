@@ -7,20 +7,20 @@
 </head>
 <body style="font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px;">
 
-  <!-- Login Box Container -->
-  <div style="max-width: 400px; margin: 60px auto; padding: 30px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+  <!-- Main Auth Box -->
+  <div style="max-width: 400px; margin: 50px auto; padding: 30px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
     <h2 style="margin-top: 0; color: #333; text-align: center;">Johannes Deliveries</h2>
-    <h4 style="color: #666; text-align: center; margin-bottom: 20px;">Sign In</h4>
+    <h4 style="color: #666; text-align: center; margin-bottom: 20px;">Sign In to Your Account</h4>
     
     <form id="loginForm">
       <div style="margin-bottom: 15px;">
         <label for="email" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Email / Username:</label>
-        <input type="text" id="email" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <input type="text" id="email" required placeholder="Enter your email or username" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
       </div>
 
       <div style="margin-bottom: 10px;">
         <label for="password" style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Password:</label>
-        <input type="password" id="password" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        <input type="password" id="password" required placeholder="Enter your password" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
       </div>
 
       <!-- Forgot Password Link -->
@@ -32,6 +32,48 @@
     </form>
 
     <p id="loginStatus" style="margin-top: 15px; font-size: 14px; text-align: center; font-weight: bold;"></p>
+
+    <hr style="margin: 25px 0 20px 0; border: 0; border-top: 1px solid #eee;" />
+
+    <!-- Registration Redirect Option -->
+    <div style="text-align: center; font-size: 14px; color: #555;">
+      Don't have an account? <a href="#" id="showRegisterBtn" style="color: #28a745; font-weight: bold; text-decoration: none;">Register Here</a>
+    </div>
+  </div>
+
+  <!-- Registration Modal / Form Popup -->
+  <div id="registerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+      <h3 style="margin-top: 0; color: #333;">Create New Account</h3>
+      
+      <form id="registerForm">
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Email / Username:</label>
+          <input type="text" id="regEmail" required placeholder="Email or Username" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Password:</label>
+          <input type="password" id="regPassword" required placeholder="Password" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px;">Account Role:</label>
+          <select id="regRole" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+            <option value="customer">Customer</option>
+            <option value="driver">Driver</option>
+            <option value="merchant">Merchant</option>
+          </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="btnCancelRegister" style="padding: 8px 15px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+          <button type="submit" style="padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Register</button>
+        </div>
+      </form>
+
+      <p id="regStatus" style="margin-top: 12px; font-size: 13px; font-weight: bold; text-align: center;"></p>
+    </div>
   </div>
 
   <!-- Password Reset Modal -->
@@ -67,9 +109,15 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
+      // Form & Modal Elements
       const loginForm = document.getElementById('loginForm');
       const loginStatus = document.getElementById('loginStatus');
       const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+      const showRegisterBtn = document.getElementById('showRegisterBtn');
+      const registerModal = document.getElementById('registerModal');
+      const registerForm = document.getElementById('registerForm');
+      const regStatus = document.getElementById('regStatus');
+      const btnCancelRegister = document.getElementById('btnCancelRegister');
       const resetPasswordModal = document.getElementById('resetPasswordModal');
       const btnSendCode = document.getElementById('btnSendCode');
       const btnResetPassword = document.getElementById('btnResetPassword');
@@ -77,16 +125,19 @@
       const btnCancelStep2 = document.getElementById('btnCancelStep2');
       const resetModalStatus = document.getElementById('resetModalStatus');
 
-      // Helper to close reset modal
-      function closeModal() {
+      // Helpers
+      function closeModals() {
+        registerModal.style.display = 'none';
         resetPasswordModal.style.display = 'none';
+        regStatus.innerText = '';
         resetModalStatus.innerText = '';
       }
 
-      btnCancelStep1.addEventListener('click', closeModal);
-      btnCancelStep2.addEventListener('click', closeModal);
+      btnCancelRegister.addEventListener('click', closeModals);
+      btnCancelStep1.addEventListener('click', closeModals);
+      btnCancelStep2.addEventListener('click', closeModals);
 
-      // --- 1. HANDLE LOGIN SUBMISSION ---
+      // --- 1. LOGIN ---
       loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = document.getElementById('email').value.trim();
@@ -122,7 +173,52 @@
         }
       });
 
-      // --- 2. OPEN RESET MODAL ---
+      // --- 2. REGISTER ACCOUNT ---
+      showRegisterBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        registerModal.style.display = 'flex';
+      });
+
+      registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('regEmail').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const role = document.getElementById('regRole').value;
+
+        regStatus.style.color = '#333';
+        regStatus.innerText = 'Creating account...';
+
+        try {
+          const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, role })
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            regStatus.style.color = 'green';
+            regStatus.innerText = 'Account created! Closing modal...';
+            setTimeout(() => {
+              closeModals();
+              document.getElementById('email').value = email;
+              document.getElementById('password').value = password;
+              loginStatus.style.color = 'green';
+              loginStatus.innerText = 'Account ready. Click Login below!';
+            }, 1200);
+          } else {
+            regStatus.style.color = '#d9534f';
+            regStatus.innerText = data.message || 'Registration failed.';
+          }
+        } catch (err) {
+          console.error(err);
+          regStatus.style.color = '#d9534f';
+          regStatus.innerText = 'Server error registering user.';
+        }
+      });
+
+      // --- 3. FORGOT PASSWORD ---
       forgotPasswordBtn.addEventListener('click', (e) => {
         e.preventDefault();
         resetPasswordModal.style.display = 'flex';
@@ -131,7 +227,6 @@
         resetModalStatus.innerText = '';
       });
 
-      // --- 3. REQUEST RESET CODE ---
       btnSendCode.addEventListener('click', async () => {
         const email = document.getElementById('resetEmailInput').value.trim();
 
@@ -173,7 +268,6 @@
         }
       });
 
-      // --- 4. SUBMIT RESET CODE & NEW PASSWORD ---
       btnResetPassword.addEventListener('click', async () => {
         const email = document.getElementById('resetEmailInput').value.trim();
         const resetCode = document.getElementById('resetCodeInput').value.trim();
@@ -181,7 +275,7 @@
 
         if (!resetCode || !newPassword) {
           resetModalStatus.style.color = '#d9534f';
-          resetModalStatus.innerText = 'Please enter both the reset code and new password.';
+          resetModalStatus.innerText = 'Please enter both the code and new password.';
           return;
         }
 
@@ -201,8 +295,8 @@
             resetModalStatus.style.color = 'green';
             resetModalStatus.innerText = 'Password updated successfully!';
             setTimeout(() => {
-              closeModal();
-              alert('Password updated! You can now log in with your new password.');
+              closeModals();
+              alert('Password updated! You can now log in.');
             }, 1200);
           } else {
             resetModalStatus.style.color = '#d9534f';
