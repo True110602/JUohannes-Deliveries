@@ -27,6 +27,11 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
+// Helper to escape special regex characters safely
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -95,8 +100,6 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Combines token auth with a role check - use as middleware, e.g.
-// app.post('/api/catalog', ...requireRole('merchant'), handler)
 function requireRole(...roles) {
   return [authenticateToken, (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -113,18 +116,29 @@ app.get('/api/check-session', authenticateToken, (req, res) => {
   res.json({ loggedIn: true, user: req.user });
 });
 
-// 2. Registration
+// 2. Registration (Protected against invalid inputs)
 app.post('/api/register', async (req, res) => {
   try {
     const { email, password, role, address, paymentMethod } = req.body;
-    const existingUser = await User.findOne({ email });
+    
+    if (!email || !password || typeof password !== 'string') {
+      return res.status(400).json({ success: false, message: 'Email and a valid password are required.' });
+    }
+
+    const cleanInput = String(email).trim();
+    const safeInput = escapeRegExp(cleanInput);
+
+    const existingUser = await User.findOne({ 
+      email: { $regex: new RegExp(`^${safeInput}$`, 'i') } 
+    });
+
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Username or email already exists.' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({
-      email,
+      email: cleanInput,
       password: hashedPassword,
       role: role || 'customer',
       address: address || '',
@@ -134,21 +148,48 @@ app.post('/api/register', async (req, res) => {
     await user.save();
     res.json({ success: true, message: 'Account registered successfully.' });
   } catch (err) {
+    console.error('Registration Error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 3. Login
+// 3. Login (Guarded against "Illegal arguments: string, undefined")
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const emailInput = req.body.email || req.body.username;
+    const passwordInput = req.body.password;
+
+    // Guard: Ensure payload provided valid strings
+    if (!emailInput || !passwordInput || typeof passwordInput !== 'string') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide both email/username and password.' 
+      });
+    }
+
+    const cleanInput = String(emailInput).trim();
+    const safeInput = escapeRegExp(cleanInput);
+
+    // Case-insensitive query
+    const user = await User.findOne({ 
+      email: { $regex: new RegExp(`^${safeInput}$`, 'i') } 
+    });
 
     if (!user) {
       return res.status(400).json({ success: false, message: 'User not found.' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Guard: Ensure DB user has a valid password hash
+    if (!user.password || typeof user.password !== 'string') {
+      console.error(`Login error: Account '${cleanInput}' exists but lacks a password hash.`);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Account configuration error. Please reset your password or re-register.' 
+      });
+    }
+
+    // Both parameters are strictly validated as non-empty strings
+    const isMatch = await bcrypt.compare(String(passwordInput), String(user.password));
     if (!isMatch) {
       return res.status(400).json({ success: false, message: 'Invalid password.' });
     }
@@ -166,20 +207,27 @@ app.post('/api/login', async (req, res) => {
       admin: '/admin.html'
     };
 
-    res.json({
+    return res.json({
       success: true,
       token,
       redirectUrl: redirectMap[user.role] || '/customer.html'
     });
+
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ success: false, message: 'Server login error.' });
+    console.error('Detailed Login Error:', err);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Server login error: ' + (err.message || 'Unknown error') 
+    });
   }
 });
 
-// 4. Seed Demo Users
+// 4. Seed Demo Users & Clean Corrupted Database Records
 app.post('/api/seed-demo-users', async (req, res) => {
   try {
+    // Clean out any corrupted database records missing passwords
+    await User.deleteMany({ $or: [{ password: { $exists: false } }, { password: null }, { password: "" }] });
+
     const demoUsers = [
       { email: 'customer', password: '1234', role: 'customer' },
       { email: 'driver', password: '1234', role: 'driver' },
@@ -189,22 +237,21 @@ app.post('/api/seed-demo-users', async (req, res) => {
 
     for (const u of demoUsers) {
       const hashedPassword = await bcrypt.hash(u.password, 10);
+      const safeInput = escapeRegExp(u.email);
       await User.findOneAndUpdate(
-        { email: u.email },
+        { email: { $regex: new RegExp(`^${safeInput}$`, 'i') } },
         { email: u.email, password: hashedPassword, role: u.role },
         { upsert: true, new: true }
       );
     }
 
-    res.json({ success: true, message: 'Demo logins restored successfully! Login with password "1234".' });
+    res.json({ success: true, message: 'Corrupted users removed & demo logins restored successfully! Login with password "1234".' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Merchant's own profile - profile picture and bank/payout details,
-// persisted server-side (previously this only lived in localStorage,
-// which meant it didn't follow the account across devices/browsers).
+// Merchant Routes
 app.get('/api/merchant/profile', ...requireRole('merchant'), async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('email profilePicUrl bankDetails');
@@ -231,12 +278,6 @@ app.patch('/api/merchant/profile', ...requireRole('merchant'), async (req, res) 
   }
 });
 
-// Merchant's own sales stats - approximate: matches orders whose "item"
-// text mentions one of this merchant's catalog item names, since orders
-// currently store items as a single combined text field rather than
-// structured line items linking back to a specific catalog item/merchant.
-// This is a reasonable estimate but not exact - ask if you want orders
-// restructured with proper line items for precise multi-merchant stats.
 app.get('/api/merchant/stats', ...requireRole('merchant'), async (req, res) => {
   try {
     const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
@@ -258,6 +299,8 @@ app.get('/api/merchant/stats', ...requireRole('merchant'), async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// Catalog Routes
 app.get('/api/catalog', async (req, res) => {
   try {
     const items = await CatalogItem.find().sort({ createdAt: -1 });
@@ -267,9 +310,6 @@ app.get('/api/catalog', async (req, res) => {
   }
 });
 
-// Merchant's own items only - used by the merchant dashboard, since the
-// public /api/catalog above intentionally returns every merchant's items
-// (customers need to see everything for sale).
 app.get('/api/merchant/catalog', ...requireRole('merchant'), async (req, res) => {
   try {
     const items = await CatalogItem.find({ merchantEmail: req.user.email }).sort({ createdAt: -1 });
@@ -314,7 +354,7 @@ app.patch('/api/catalog/:id/stock', ...requireRole('merchant'), async (req, res)
   }
 });
 
-// 6. Orders Routes
+// Orders Routes
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -374,7 +414,7 @@ app.patch('/api/orders/:id/status', async (req, res) => {
   }
 });
 
-// 7. Live Driver Fleet Tracking via WebSockets
+// WebSockets
 let activeDrivers = {};
 
 io.on('connection', (socket) => {
@@ -393,7 +433,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Database Connection & Server Initialization
+// Server Initialization
 mongoose.connect(MONGO_URI)
   .then(async () => {
     console.log('MongoDB connected successfully');
