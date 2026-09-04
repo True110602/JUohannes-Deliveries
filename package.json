@@ -18,15 +18,17 @@
     "bcryptjs": "^2.4.3",
     "connect-mongo": "^5.1.0",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.2",
+    "nodemailer": "^10.0.0",
     "paynow": "^2.2.2",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.5.0"
+    "@capacitor/cli": "^8.4.3"
   }
 }
