@@ -1,0 +1,27 @@
+<svg width="700" height="220" viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#007bff"/>
+      <stop offset="100%" stop-color="#0056b3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon badge -->
+  <rect x="10" y="10" width="200" height="200" rx="44" fill="url(#bgGradient2)"/>
+  <g transform="translate(110, 100)">
+    <path d="M -46 -9 L 0 -32 L 46 -9 L 46 32 L 0 55 L -46 32 Z" fill="#ffffff" opacity="0.95"/>
+    <path d="M -46 -9 L 0 -32 L 0 14 L -46 32 Z" fill="#e8f1ff"/>
+    <path d="M 46 -9 L 0 -32 L 0 14 L 46 32 Z" fill="#ffffff"/>
+    <line x1="0" y1="-32" x2="0" y2="55" stroke="#007bff" stroke-width="3" opacity="0.35"/>
+    <path d="M -46 -9 L 0 14 L 46 -9" fill="none" stroke="#007bff" stroke-width="3" opacity="0.35"/>
+  </g>
+  <g stroke="#28a745" stroke-width="7" stroke-linecap="round" opacity="0.9">
+    <line x1="34" y1="163" x2="70" y2="163"/>
+    <line x1="34" y1="178" x2="86" y2="178"/>
+    <line x1="34" y1="193" x2="60" y2="193"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="235" y="105" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="bold" fill="#1a1a2e">Johannes</text>
+  <text x="235" y="155" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="bold" fill="#007bff">Deliveries</text>
+</svg>

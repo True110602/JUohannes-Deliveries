@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <script src="/js/geo-helpers.js"></script>
+  <script>
+    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        }
+      });
+  </script>
+  <meta charset="UTF-8">
+  <title>Johannes Deliveries - Customer Portal</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
+    .container { max-width: 650px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: auto; }
+    input, select, button { width: 100%; padding: 10px; margin-top: 8px; margin-bottom: 12px; box-sizing: border-box; }
+    button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    #map { width: 100%; height: 300px; border-radius: 8px; margin-top: 10px; margin-bottom: 15px; }
+    .catalog-item { padding: 10px; margin-top: 5px; border-radius: 4px; }
+    .catalog-item-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .catalog-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; }
+    .catalog-desc { font-size: 13px; color: #555; margin-top: 4px; }
+    .catalog-options { margin-top: 8px; }
+    .catalog-options label { font-size: 13px; font-weight: bold; display: block; margin-top: 6px; }
+    .catalog-options select { width: 100%; padding: 6px; margin-top: 2px; }
+    .add-to-order-btn { width: auto; padding: 6px 12px; margin-top: 8px; font-size: 13px; }
+    #orderSummary { background: #eef7ee; border-radius: 6px; padding: 10px; margin-top: 10px; margin-bottom: 15px; font-size: 14px; }
+    #orderSummary ul { margin: 6px 0 0 18px; padding: 0; }
+    #ecocashField { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2>Book a Delivery / Order</h2>
+
+    <form id="orderForm">
+      <label>Customer Name:</label>
+      <input type="text" name="customerName" required placeholder="e.g. Bhekinkosi Sibanda">
+
+      <label>Pickup Location:</label>
+      <input type="text" name="pickup" required placeholder="e.g. Ascot Shopping Centre">
+
+      <label>Drop-off Coordinates (Click map below):</label>
+      <input type="text" name="dropoff" required placeholder="Coordinates will appear here">
+
+      <label>Total Amount (USD):</label>
+      <input type="number" name="amount" id="amount" step="0.01" min="0.01" required placeholder="e.g. 5.00">
+
+      <label>Select Drop-off on Map:</label>
+      <button type="button" id="useMyLocationBtn" style="background: #6c757d; margin-bottom: 8px;">Use My Location</button>
+      <div id="map"></div>
+
+      <h3>Available Menu</h3>
+      <div id="customerCatalogList"><span class="inline-spinner"></span>Loading menu...</div>
+
+      <div id="orderSummary" style="display:none;">
+        <b>Your order:</b>
+        <ul id="orderSummaryList"></ul>
+      </div>
+      <input type="hidden" name="item" id="itemField">
+
+      <label>Payment Method:</label>
+      <select name="paymentMethod" id="paymentMethod" required>
+        <option value="Cash">Cash on Delivery</option>
+        <option value="EcoCash">EcoCash</option>
+        <option value="Card">Credit/Debit Card</option>
+      </select>
+
+      <div id="ecocashField">
+        <label>EcoCash Number:</label>
+        <input type="tel" name="ecocashNumber" id="ecocashNumber" placeholder="e.g. 0771234567">
+      </div>
+
+      <button type="submit" style="background: #28a745; margin-top: 20px;">Request Delivery & Pay</button>
+    </form>
+    <div id="paymentStatusBox" style="display:none; margin-top: 15px; padding: 12px; border-radius: 6px; background: #fff3cd; color: #856404;"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const map = L.map('map').setView([-20.1350, 28.5800], 15);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let currentMarker = null;
+
+    map.on('click', function(e) {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      if (currentMarker) {
+        map.removeLayer(currentMarker);
+      }
+
+      currentMarker = L.marker([lat, lng]).addTo(map)
+        .bindPopup(`<b>Selected Drop-off</b><br>Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`)
+        .openPopup();
+
+      const dropoffInput = document.querySelector('input[name="dropoff"]');
+      if (dropoffInput) {
+        dropoffInput.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      }
+    });
+
+    // "Use My Location" - just centers the map on the customer's real
+    // position to make finding their drop-off easier to click precisely;
+    // it does not set the drop-off itself, so the existing click-to-select
+    // behavior above is unaffected.
+    document.getElementById('useMyLocationBtn').addEventListener('click', async (e) => {
+      const btn = e.target;
+      setButtonLoading(btn, true, 'Locating...');
+      try {
+        const { lat, lng } = await getCurrentLocation();
+        map.setView([lat, lng], 16);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setButtonLoading(btn, false);
+      }
+    });
+
+    // Show/hide the EcoCash number field based on the selected payment method
+    const paymentSelect = document.getElementById('paymentMethod');
+    const ecocashField = document.getElementById('ecocashField');
+    const ecocashInput = document.getElementById('ecocashNumber');
+
+    paymentSelect.addEventListener('change', () => {
+      const isEcoCash = paymentSelect.value === 'EcoCash';
+      ecocashField.style.display = isEcoCash ? 'block' : 'none';
+      ecocashInput.required = isEcoCash;
+    });
+
+    // Tracks what the customer has added, e.g.
+    // [{ name: 'Beef Burger', selections: { 'Side Dish': 'Fries', 'Sauce': 'BBQ' } }]
+    let orderItems = [];
+
+    function renderOrderSummary() {
+      const box = document.getElementById('orderSummary');
+      const list = document.getElementById('orderSummaryList');
+      const itemField = document.getElementById('itemField');
+
+      if (orderItems.length === 0) {
+        box.style.display = 'none';
+        itemField.value = '';
+        return;
+      }
+
+      box.style.display = 'block';
+      list.innerHTML = '';
+
+      const summaryStrings = orderItems.map(entry => {
+        const selectionsText = Object.entries(entry.selections)
+          .map(([group, choice]) => `${group}: ${choice}`)
+          .join(', ');
+        const full = selectionsText ? `${entry.name} (${selectionsText})` : entry.name;
+
+        const li = document.createElement('li');
+        li.textContent = full;
+        list.appendChild(li);
+
+        return full;
+      });
+
+      itemField.value = summaryStrings.join('; ');
+    }
+
+    function addToOrder(item) {
+      const selections = {};
+      (item.optionGroups || []).forEach(group => {
+        const select = document.getElementById(`option-${item._id}-${group.groupName}`);
+        if (select) selections[group.groupName] = select.value;
+      });
+
+      orderItems.push({ name: item.name, selections });
+      renderOrderSummary();
+    }
+
+    async function loadCustomerCatalog() {
+      try {
+        const res = await fetch(`${API_BASE}/api/catalog`, { credentials: 'include' });
+        const items = await res.json();
+        const container = document.getElementById('customerCatalogList');
+        container.innerHTML = '';
+
+        if (items.length === 0) {
+          container.innerHTML = '<i>No items available right now.</i>';
+          return;
+        }
+
+        items.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'catalog-item';
+
+          const optionsHtml = (item.optionGroups || []).map(group => `
+            <label>${group.groupName}:</label>
+            <select id="option-${item._id}-${group.groupName}">
+              ${group.choices.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+          `).join('');
+
+          div.innerHTML = `
+            <div class="catalog-item-top">
+              <div style="display:flex; align-items:center; gap:10px;">
+                ${item.imageUrl ? `<img class="catalog-thumb" src="${item.imageUrl}" onerror="this.style.display='none'">` : ''}
+                <div>
+                  <span><b>${item.name}</b> - $${item.price.toFixed(2)}</span>
+                  ${item.description ? `<div class="catalog-desc">${item.description}</div>` : ''}
+                </div>
+              </div>
+              <span style="color: ${item.inStock ? 'green' : 'red'}; font-weight: bold;">${item.inStock ? 'In Stock' : 'SOLD OUT'}</span>
+            </div>
+            ${item.inStock ? `
+              <div class="catalog-options">${optionsHtml}</div>
+              <button type="button" class="add-to-order-btn" data-item-id="${item._id}">Add to Order</button>
+            ` : ''}
+          `;
+
+          if (item.inStock) {
+            div.querySelector('.add-to-order-btn').addEventListener('click', () => addToOrder(item));
+          }
+
+          container.appendChild(div);
+        });
+      } catch (err) {
+        document.getElementById('customerCatalogList').innerHTML = '<i>Could not load menu.</i>';
+      }
+    }
+
+    loadCustomerCatalog();
+
+    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const payload = {
+        customerName: formData.get('customerName'),
+        pickup: formData.get('pickup'),
+        dropoff: formData.get('dropoff'),
+        item: formData.get('item'),
+        amount: formData.get('amount'),
+        paymentMethod: formData.get('paymentMethod'),
+        ecocashNumber: formData.get('ecocashNumber') || null
+      };
+
+      const statusBox = document.getElementById('paymentStatusBox');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      setButtonLoading(submitBtn, true, 'Submitting...');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        setButtonLoading(submitBtn, false);
+
+        if (data.success) {
+          const order = data.order;
+
+          if (payload.paymentMethod === 'EcoCash') {
+            if (order.paymentStatus === 'not_configured') {
+              statusBox.style.display = 'block';
+              statusBox.style.background = '#f8d7da';
+              statusBox.style.color = '#721c24';
+              statusBox.innerText = 'Order recorded, but EcoCash payment processing is not set up yet - no payment request was sent.';
+            } else if (order.paymentStatus === 'failed') {
+              statusBox.style.display = 'block';
+              statusBox.style.background = '#f8d7da';
+              statusBox.style.color = '#721c24';
+              statusBox.innerText = `Payment request failed: ${order.paynowInstructions || 'Please try again.'}`;
+            } else {
+              statusBox.style.display = 'block';
+              statusBox.style.background = '#fff3cd';
+              statusBox.style.color = '#856404';
+              statusBox.innerText = order.paynowInstructions
+                ? `Check your phone: ${order.paynowInstructions}`
+                : `A payment request was sent to ${payload.ecocashNumber}. Please confirm on your phone.`;
+
+              // Poll every 5 seconds for up to 2 minutes to see if the
+              // payment gets confirmed, in case the webhook is slow or
+              // not reachable yet (e.g. testing locally).
+              let attempts = 0;
+              const poll = setInterval(async () => {
+                attempts++;
+                try {
+                  const statusRes = await fetch(`${API_BASE}/api/orders/${order._id}/payment-status`, { credentials: 'include' });
+                  const statusData = await statusRes.json();
+                  if (statusData.paymentStatus === 'paid') {
+                    statusBox.style.background = '#d4edda';
+                    statusBox.style.color = '#155724';
+                    statusBox.innerText = 'Payment confirmed! Your delivery is on its way.';
+                    clearInterval(poll);
+                  } else if (statusData.paymentStatus === 'failed' || statusData.paymentStatus === 'cancelled') {
+                    statusBox.style.background = '#f8d7da';
+                    statusBox.style.color = '#721c24';
+                    statusBox.innerText = 'Payment was not completed.';
+                    clearInterval(poll);
+                  }
+                } catch (err) {
+                  // ignore transient errors, just try again next tick
+                }
+                if (attempts >= 24) clearInterval(poll); // ~2 minutes
+              }, 5000);
+            }
+          } else {
+            statusBox.style.display = 'block';
+            statusBox.style.background = '#d4edda';
+            statusBox.style.color = '#155724';
+            statusBox.innerText = 'Delivery requested! We\'ll be in touch shortly.';
+          }
+
+          e.target.reset();
+          ecocashField.style.display = 'none';
+          orderItems = [];
+          renderOrderSummary();
+        } else {
+          alert(data.message || 'Could not submit your order.');
+        }
+      } catch (err) {
+        setButtonLoading(submitBtn, false);
+        alert('Server connection error.');
+      }
+    });
+  </script>
+
+</body>
+</html>

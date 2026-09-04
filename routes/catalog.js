@@ -1,28 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const CatalogItem = require('../models/CatalogItem');
+const { requireRole } = require('../middleware/auth');
 
-// GET catalog
+// GET catalog - public, every merchant's items, used by the customer menu
 router.get('/', async (req, res) => {
   try {
-    const items = await CatalogItem.find();
+    const items = await CatalogItem.find().sort({ createdAt: -1 });
     res.json(items);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// POST new catalog item with options and image URL
-router.post('/', async (req, res) => {
+// POST new catalog item - merchant only, stamped with their own email
+router.post('/', ...requireRole('merchant'), async (req, res) => {
   try {
     const { name, price, description, imageUrl, optionGroups } = req.body;
-    
+
     const newItem = new CatalogItem({
       name,
       price,
       description,
       imageUrl,
-      optionGroups: optionGroups || []
+      optionGroups: optionGroups || [],
+      merchantEmail: req.user.email
     });
 
     await newItem.save();
@@ -32,11 +34,14 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH toggle stock status
-router.patch('/:id/stock', async (req, res) => {
+// PATCH toggle stock status - merchant only, and only for their own items
+router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
   try {
     const item = await CatalogItem.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
+    }
 
     item.inStock = !item.inStock;
     await item.save();

@@ -1,6 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+  (async function verifyAuth() {
+    const token = localStorage.getItem('token');
+
+    // 1. If no token in local storage, send back to login
+    if (!token) {
+      window.location.href = '/index.html'; // Change to your login page filename if different
+      return;
+    }
+
+    try {
+      // 2. Validate token against server endpoint
+      const res = await fetch('/api/check-session', {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.loggedIn) {
+        // Token expired or invalid -> Clear local storage & kick back
+        localStorage.removeItem('token');
+        window.location.href = '/index.html';
+      }
+    } catch (err) {
+      console.error('Session validation error:', err);
+      // Fallback: stay on page if backend server is temporarily unreachable
+    }
+  })();
+</script>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
