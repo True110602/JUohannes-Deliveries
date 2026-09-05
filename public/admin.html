@@ -3,6 +3,7 @@
 <head>
 <script src="/js/config.js"></script>
 <script src="/js/ui-helpers.js"></script>
+<<<<<<< HEAD
 <script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
@@ -31,6 +32,17 @@
     window.location.href = '/login.html';
   }
 </script>
+
+  <script>
+    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        }
+      });
+  </script>
+918a5da9c6707dcdacceb420e886496643290526
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Admin Dashboard</title>
@@ -39,6 +51,7 @@
   <link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
+<<<<<<< HEAD
 
   <div class="fx-shell" style="max-width: 1200px;">
     <div class="fx-nav">
@@ -200,3 +213,5 @@
   </script>
 </body>
 </html>
+=======
+>>>>>>> 918a5da9c6707dcdacceb420e886496643290526
