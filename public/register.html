@@ -2,57 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register - Johannes Deliveries</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    .register-box { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 340px; margin: 20px 0; }
-    input, select, button { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; box-sizing: border-box; }
-    button { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-    button:disabled { background: #6c757d; cursor: not-allowed; }
-    .error { color: red; font-size: 14px; text-align: center; margin-bottom: 10px; }
-    .success { color: green; font-size: 14px; text-align: center; margin-bottom: 10px; }
-  </style>
+  <link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
-  <div class="register-box">
-    <h2>Create Account</h2>
-    <div id="msg" class="error"></div>
+  <div class="fx-shell fx-center">
+  <div style="width:100%; max-width:420px;">
 
-    <form id="registerForm">
-      <label>Account Type:</label>
-      <select name="role" required>
-        <option value="customer">Customer</option>
-        <option value="driver">Driver</option>
-        <option value="merchant">Merchant / Restaurant</option>
-        <option value="admin">Admin</option>
-      </select>
+    <div class="fx-brand">
+      <div class="fx-logo-mark">JD</div>
+      <div class="fx-brand-text"><b>Johannes</b> Deliveries</div>
+    </div>
 
-      <label>Email Address / Username:</label>
-      <input type="text" name="email" required placeholder="e.g. driver or name@example.com">
+    <div class="fx-card">
+      <div class="fx-eyebrow fx-center-text">Get started</div>
+      <h2 class="fx-center-text" style="margin-top:0;">Create your account</h2>
+      <div id="msg" class="error"></div>
 
-      <label>Password:</label>
-      <input type="password" name="password" required placeholder="••••••••">
+      <form id="registerForm">
+        <label>Account Type</label>
+        <select name="role" required>
+          <option value="customer">Customer</option>
+          <option value="driver">Driver</option>
+          <option value="merchant">Merchant / Restaurant</option>
+          <option value="admin">Admin</option>
+        </select>
 
-      <label>Physical Address:</label>
-      <input type="text" name="address" required placeholder="e.g. Bulawayo CBD">
+        <label>Email Address / Username</label>
+        <input type="text" name="email" required placeholder="e.g. driver or name@example.com">
 
-      <label>Preferred Payment Method:</label>
-      <select name="paymentMethod" required>
-        <option value="Cash">Cash on Delivery</option>
-        <option value="EcoCash">EcoCash</option>
-        <option value="Card">Card</option>
-      </select>
+        <label>Password</label>
+        <input type="password" name="password" required placeholder="••••••••">
 
-      <button type="submit" id="submitBtn">Create Account</button>
-    </form>
-    <p style="text-align: center; margin-top: 15px;">Already have an account? <a href="login.html">Login here</a></p>
+        <label>Physical Address</label>
+        <input type="text" name="address" required placeholder="e.g. Bulawayo CBD">
+
+        <label>Preferred Payment Method</label>
+        <select name="paymentMethod" required>
+          <option value="Cash">Cash on Delivery</option>
+          <option value="EcoCash">EcoCash</option>
+          <option value="Card">Card</option>
+        </select>
+
+        <button type="submit" id="submitBtn" style="margin-top:18px;">Create Account</button>
+      </form>
+      <p class="fx-center-text fx-muted" style="margin-top:15px;">Already have an account? <a href="login.html" class="fx-link">Login here</a></p>
+    </div>
+  </div>
   </div>
 
   <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
   <script>
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const formData = new FormData(e.target);
       const payload = Object.fromEntries(formData.entries());
       const msgDiv = document.getElementById('msg');
@@ -60,8 +65,7 @@
 
       msgDiv.className = 'error';
       msgDiv.innerText = '';
-      submitBtn.disabled = true;
-      submitBtn.innerText = 'Creating Account...';
+      setButtonLoading(submitBtn, true, 'Creating Account...');
 
       try {
         const baseUrl = window.API_BASE || '';
@@ -74,20 +78,21 @@
         const data = await res.json();
 
         if (res.ok && data.success) {
+          setButtonLoading(submitBtn, false);
           msgDiv.className = 'success';
           msgDiv.innerText = 'Registration successful! Redirecting to login...';
           setTimeout(() => {
             window.location.href = '/login.html';
           }, 1500);
         } else {
-          submitBtn.disabled = false;
-          submitBtn.innerText = 'Create Account';
+          setButtonLoading(submitBtn, false);
+          msgDiv.className = 'error';
           msgDiv.innerText = data.message || 'Registration failed. Please try again.';
         }
       } catch (err) {
         console.error('Registration error:', err);
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Create Account';
+        setButtonLoading(submitBtn, false);
+        msgDiv.className = 'error';
         msgDiv.innerText = 'Server connection error. Please check Render backend status.';
       }
     });

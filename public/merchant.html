@@ -1,67 +1,270 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/user');
-const CatalogItem = require('../models/CatalogItem');
-const Order = require('../models/Order');
-const { requireRole } = require('../middleware/auth');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+  (async function verifyAuth() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = '/index.html';
+      return;
+    }
+    try {
+      const res = await fetch('/api/check-session', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.loggedIn) {
+        localStorage.removeItem('token');
+        window.location.href = '/index.html';
+      }
+    } catch (err) {
+      console.error('Session validation error:', err);
+    }
+  })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Johannes Deliveries - Merchant Dashboard</title>
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
 
-// Merchant's own profile - profile picture and bank/payout details,
-// persisted server-side so they follow the account across devices.
-router.get('/profile', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('email profilePicUrl bankDetails');
-    if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
-    res.json({ success: true, profile: user });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  <div class="fx-shell" style="max-width: 1000px;">
+    <div class="fx-nav">
+      <div class="fx-nav-title">
+        <div class="fx-logo-mark">JD</div>
+        <div>
+          <span class="fx-pill">Merchant</span>
+          <h2 style="margin:6px 0 0;">Storefront dashboard</h2>
+        </div>
+      </div>
+      <button class="fx-btn-danger" style="width:auto;" onclick="logoutMerchant()">Logout</button>
+    </div>
 
-router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const { profilePicUrl, bankName, accountName, accountNumber } = req.body;
-    const update = {};
-    if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
-    if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
-      update.bankDetails = { bankName, accountName, accountNumber };
+    <div class="dashboard-grid">
+
+      <div class="section fx-card">
+        <div class="fx-eyebrow">Performance</div>
+        <h3 style="margin-top:0;">Sales snapshot</h3>
+        <p class="fx-muted" style="margin-top:0;">Approximate — based on delivered orders that mention one of your item names.</p>
+        <div id="statsBox" style="display:flex; gap:20px; margin-top:14px;">
+          <div>
+            <div style="font-size:26px; font-weight:700; color:var(--accent);" id="statSalesCount">-</div>
+            <div class="fx-muted" style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Orders delivered</div>
+          </div>
+          <div>
+            <div style="font-size:26px; font-weight:700; color:var(--accent-2);" id="statRevenue">-</div>
+            <div class="fx-muted" style="font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Total revenue</div>
+          </div>
+        </div>
+
+        <hr class="fx-divider" />
+
+        <div class="fx-eyebrow">Payouts</div>
+        <h3 style="margin-top:0;">Profile & bank details</h3>
+        <form id="profileForm">
+          <label>Profile picture URL</label>
+          <input type="text" id="profilePicUrl" placeholder="https://...">
+
+          <label>Bank name</label>
+          <input type="text" id="bankName" placeholder="e.g. CBZ Bank">
+
+          <label>Account name</label>
+          <input type="text" id="accountName" placeholder="Account holder name">
+
+          <label>Account number</label>
+          <input type="text" id="accountNumber" placeholder="Account number">
+
+          <button type="submit" style="margin-top:14px;">Save profile</button>
+        </form>
+        <p id="profileStatus" class="fx-status"></p>
+      </div>
+
+      <div class="section fx-card">
+        <div class="fx-eyebrow">Menu</div>
+        <h3 style="margin-top:0;">Add catalog item</h3>
+        <form id="itemForm">
+          <label>Item name</label>
+          <input type="text" id="itemName" required placeholder="e.g. Chicken & Chips">
+
+          <label>Price (USD)</label>
+          <input type="number" id="itemPrice" step="0.01" min="0" required placeholder="e.g. 5.00">
+
+          <label>Description</label>
+          <input type="text" id="itemDescription" placeholder="Short description (optional)">
+
+          <label>Image URL</label>
+          <input type="text" id="itemImageUrl" placeholder="https://... (optional)">
+
+          <button type="submit" style="margin-top:14px;">Add item</button>
+        </form>
+        <p id="itemStatus" class="fx-status"></p>
+
+        <hr class="fx-divider" />
+
+        <h3 style="margin-top:0;">My items</h3>
+        <div id="myCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading your catalog...</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function logoutMerchant() {
+      clearAuthToken();
+      window.location.href = '/login.html';
     }
 
-    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email profilePicUrl bankDetails');
-    res.json({ success: true, profile: user });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+    async function loadProfile() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/profile`);
+        const data = await res.json();
+        if (data.success) {
+          const p = data.profile;
+          document.getElementById('profilePicUrl').value = p.profilePicUrl || '';
+          document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
+          document.getElementById('accountName').value = (p.bankDetails && p.bankDetails.accountName) || '';
+          document.getElementById('accountNumber').value = (p.bankDetails && p.bankDetails.accountNumber) || '';
+        }
+      } catch (err) {
+        console.error('Could not load profile', err);
+      }
+    }
 
-// Merchant's own items only (the public /api/catalog returns everyone's)
-router.get('/catalog', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const items = await CatalogItem.find({ merchantEmail: req.user.email }).sort({ createdAt: -1 });
-    res.json(items);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    async function loadStats() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/stats`);
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('statSalesCount').innerText = data.salesCount;
+          document.getElementById('statRevenue').innerText = `$${data.totalRevenue.toFixed(2)}`;
+        }
+      } catch (err) {
+        console.error('Could not load stats', err);
+      }
+    }
 
-// Approximate sales stats - matches delivered orders whose "item" text
-// mentions one of this merchant's catalog item names. Orders currently
-// store items as a combined text field rather than structured line items
-// linking back to a specific catalog item/merchant, so this is an
-// estimate, not an exact figure.
-router.get('/stats', ...requireRole('merchant'), async (req, res) => {
-  try {
-    const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
-    const myItemNames = myItems.map(i => i.name);
+    async function loadMyCatalog() {
+      const container = document.getElementById('myCatalogList');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/catalog`);
+        const items = await res.json();
+        container.innerHTML = '';
 
-    const allOrders = await Order.find({ status: 'delivered' });
-    const myOrders = allOrders.filter(o => myItemNames.some(name => (o.item || '').includes(name)));
+        if (!items.length) {
+          container.innerHTML = '<i class="fx-muted">You haven\'t added any items yet.</i>';
+          return;
+        }
 
-    const totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+        items.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'catalog-item';
+          div.innerHTML = `
+            <div class="catalog-item-top">
+              <div style="display:flex; align-items:center; gap:10px;">
+                ${item.imageUrl ? `<img class="catalog-thumb" src="${item.imageUrl}" onerror="this.style.display='none'">` : ''}
+                <div>
+                  <span><b>${item.name}</b> - $${item.price.toFixed(2)}</span>
+                  ${item.description ? `<div class="catalog-desc">${item.description}</div>` : ''}
+                </div>
+              </div>
+              <span style="color: ${item.inStock ? 'var(--accent-ok)' : 'var(--accent-danger)'}; font-weight:bold; font-size:12px;">${item.inStock ? 'In Stock' : 'SOLD OUT'}</span>
+            </div>
+            <button type="button" class="add-to-order-btn fx-btn-muted" data-id="${item._id}">${item.inStock ? 'Mark sold out' : 'Mark in stock'}</button>
+          `;
+          div.querySelector('button').addEventListener('click', (e) => toggleStock(item._id, e.target));
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = '<i class="fx-muted">Could not load your catalog.</i>';
+      }
+    }
 
-    res.json({ success: true, salesCount: myOrders.length, totalRevenue });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+    async function toggleStock(itemId, btn) {
+      setButtonLoading(btn, true, 'Updating...');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog/${itemId}/stock`, { method: 'PATCH' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          showToast(data.message || 'Could not update stock status.', 'error');
+        }
+      } catch (err) {
+        showToast('Server error updating stock status.', 'error');
+      } finally {
+        loadMyCatalog();
+      }
+    }
 
-module.exports = router;
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      const statusEl = document.getElementById('profileStatus');
+      setButtonLoading(btn, true, 'Saving...');
+      statusEl.innerText = '';
+
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/profile`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            profilePicUrl: document.getElementById('profilePicUrl').value,
+            bankName: document.getElementById('bankName').value,
+            accountName: document.getElementById('accountName').value,
+            accountNumber: document.getElementById('accountNumber').value
+          })
+        });
+        const data = await res.json();
+        setButtonLoading(btn, false);
+        statusEl.style.color = data.success ? '#4ade80' : '#ff5d7a';
+        statusEl.innerText = data.success ? 'Profile saved.' : (data.message || 'Could not save profile.');
+      } catch (err) {
+        setButtonLoading(btn, false);
+        statusEl.style.color = '#ff5d7a';
+        statusEl.innerText = 'Server error saving profile.';
+      }
+    });
+
+    document.getElementById('itemForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      const statusEl = document.getElementById('itemStatus');
+      setButtonLoading(btn, true, 'Adding...');
+      statusEl.innerText = '';
+
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: document.getElementById('itemName').value,
+            price: parseFloat(document.getElementById('itemPrice').value) || 0,
+            description: document.getElementById('itemDescription').value,
+            imageUrl: document.getElementById('itemImageUrl').value
+          })
+        });
+
+        if (res.ok) {
+          setButtonLoading(btn, false);
+          statusEl.style.color = '#4ade80';
+          statusEl.innerText = 'Item added!';
+          e.target.reset();
+          loadMyCatalog();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setButtonLoading(btn, false);
+          statusEl.style.color = '#ff5d7a';
+          statusEl.innerText = data.message || 'Could not add item.';
+        }
+      } catch (err) {
+        setButtonLoading(btn, false);
+        statusEl.style.color = '#ff5d7a';
+        statusEl.innerText = 'Server error adding item.';
+      }
+    });
+
+    loadProfile();
+    loadStats();
+    loadMyCatalog();
+  </script>
+</body>
+</html>

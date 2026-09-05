@@ -45,55 +45,57 @@
           window.location.href = '/login.html';
         }
       });
+
+    function logoutCustomer() {
+      clearAuthToken();
+      window.location.href = '/login.html';
+    }
   </script>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Customer Portal</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/theme.css" />
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-    .container { max-width: 650px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: auto; }
-    input, select, button { width: 100%; padding: 10px; margin-top: 8px; margin-bottom: 12px; box-sizing: border-box; }
-    button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    #map { width: 100%; height: 300px; border-radius: 8px; margin-top: 10px; margin-bottom: 15px; }
-    .catalog-item { padding: 10px; margin-top: 5px; border-radius: 4px; border: 1px solid #e9ecef; }
-    .catalog-item-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-    .catalog-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; }
-    .catalog-desc { font-size: 13px; color: #555; margin-top: 4px; }
-    .catalog-options { margin-top: 8px; }
-    .catalog-options label { font-size: 13px; font-weight: bold; display: block; margin-top: 6px; }
-    .catalog-options select { width: 100%; padding: 6px; margin-top: 2px; }
-    .add-to-order-btn { width: auto; padding: 6px 12px; margin-top: 8px; font-size: 13px; background: #17a2b8; }
-    #orderSummary { background: #eef7ee; border-radius: 6px; padding: 10px; margin-top: 10px; margin-bottom: 15px; font-size: 14px; }
-    #orderSummary ul { margin: 6px 0 0 18px; padding: 0; }
     #ecocashField { display: none; }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <h2>Book a Delivery / Order</h2>
+  <div class="fx-shell" style="max-width: 700px;">
+  <div class="fx-nav">
+    <div class="fx-nav-title">
+      <div class="fx-logo-mark" style="width:32px;height:32px;font-size:14px;">JD</div>
+      <span class="fx-pill">Customer</span>
+    </div>
+    <button class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
+  </div>
+
+  <div class="fx-card">
+    <div class="fx-eyebrow">New request</div>
+    <h2 style="margin-top:0;">Book a delivery / order</h2>
 
     <form id="orderForm">
-      <label>Customer Name:</label>
+      <label>Customer Name</label>
       <input type="text" name="customerName" required placeholder="e.g. Bhekinkosi Sibanda">
 
-      <label>Pickup Location:</label>
+      <label>Pickup Location</label>
       <input type="text" name="pickup" required placeholder="e.g. Ascot Shopping Centre">
 
-      <label>Drop-off Coordinates (Click map below):</label>
+      <label>Drop-off Coordinates (Click map below)</label>
       <input type="text" name="dropoff" required placeholder="Coordinates will appear here">
 
-      <label>Total Amount (USD):</label>
+      <label>Total Amount (USD)</label>
       <input type="number" name="amount" id="amount" step="0.01" min="0.01" required placeholder="e.g. 5.00">
 
-      <label>Select Drop-off on Map:</label>
-      <button type="button" id="useMyLocationBtn" style="background: #6c757d; margin-bottom: 8px;">Use My Location</button>
-      <div id="map"></div>
+      <label>Select Drop-off on Map</label>
+      <button type="button" id="useMyLocationBtn" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
+      <div id="map" style="width:100%; height:300px; margin-top:10px; margin-bottom:15px;"></div>
 
       <h3>Available Menu</h3>
-      <div id="customerCatalogList"><span class="inline-spinner"></span>Loading menu...</div>
+      <div id="customerCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading menu...</div>
 
       <div id="orderSummary" style="display:none;">
         <b>Your order:</b>
@@ -101,7 +103,7 @@
       </div>
       <input type="hidden" name="item" id="itemField">
 
-      <label>Payment Method:</label>
+      <label>Payment Method</label>
       <select name="paymentMethod" id="paymentMethod" required>
         <option value="Cash">Cash on Delivery</option>
         <option value="EcoCash">EcoCash</option>
@@ -109,13 +111,14 @@
       </select>
 
       <div id="ecocashField">
-        <label>EcoCash Number:</label>
+        <label>EcoCash Number</label>
         <input type="tel" name="ecocashNumber" id="ecocashNumber" placeholder="e.g. 0771234567">
       </div>
 
-      <button type="submit" style="background: #28a745; margin-top: 20px;">Request Delivery & Pay</button>
+      <button type="submit" style="margin-top: 20px;">Request Delivery & Pay</button>
     </form>
-    <div id="paymentStatusBox" style="display:none; margin-top: 15px; padding: 12px; border-radius: 6px; background: #fff3cd; color: #856404;"></div>
+    <div id="paymentStatusBox" class="fx-alert fx-alert-warn" style="display:none; margin-top: 15px;"></div>
+  </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -246,7 +249,7 @@
                   ${item.description ? `<div class="catalog-desc">${item.description}</div>` : ''}
                 </div>
               </div>
-              <span style="color: ${item.inStock ? 'green' : 'red'}; font-weight: bold;">${item.inStock ? 'In Stock' : 'SOLD OUT'}</span>
+              <span style="color: ${item.inStock ? 'var(--accent-ok)' : 'var(--accent-danger)'}; font-weight: bold; font-size:12px;">${item.inStock ? 'In Stock' : 'SOLD OUT'}</span>
             </div>
             ${item.inStock ? `
               <div class="catalog-options">${optionsHtml}</div>
@@ -298,18 +301,15 @@
           if (payload.paymentMethod === 'EcoCash') {
             if (order.paymentStatus === 'not_configured') {
               statusBox.style.display = 'block';
-              statusBox.style.background = '#f8d7da';
-              statusBox.style.color = '#721c24';
+              statusBox.className = 'fx-alert fx-alert-danger';
               statusBox.innerText = 'Order recorded, but EcoCash payment processing is not set up yet - no payment request was sent.';
             } else if (order.paymentStatus === 'failed') {
               statusBox.style.display = 'block';
-              statusBox.style.background = '#f8d7da';
-              statusBox.style.color = '#721c24';
+              statusBox.className = 'fx-alert fx-alert-danger';
               statusBox.innerText = `Payment request failed: ${order.paynowInstructions || 'Please try again.'}`;
             } else {
               statusBox.style.display = 'block';
-              statusBox.style.background = '#fff3cd';
-              statusBox.style.color = '#856404';
+              statusBox.className = 'fx-alert fx-alert-warn';
               statusBox.innerText = order.paynowInstructions
                 ? `Check your phone: ${order.paynowInstructions}`
                 : `A payment request was sent to ${payload.ecocashNumber}. Please confirm on your phone.`;
@@ -321,13 +321,11 @@
                   const statusRes = await authFetch(`${window.API_BASE}/api/orders/${order._id}/payment-status`);
                   const statusData = await statusRes.json();
                   if (statusData.paymentStatus === 'paid') {
-                    statusBox.style.background = '#d4edda';
-                    statusBox.style.color = '#155724';
+                    statusBox.className = 'fx-alert fx-alert-ok';
                     statusBox.innerText = 'Payment confirmed! Your delivery is on its way.';
                     clearInterval(poll);
                   } else if (statusData.paymentStatus === 'failed' || statusData.paymentStatus === 'cancelled') {
-                    statusBox.style.background = '#f8d7da';
-                    statusBox.style.color = '#721c24';
+                    statusBox.className = 'fx-alert fx-alert-danger';
                     statusBox.innerText = 'Payment was not completed.';
                     clearInterval(poll);
                   }
@@ -337,8 +335,7 @@
             }
           } else {
             statusBox.style.display = 'block';
-            statusBox.style.background = '#d4edda';
-            statusBox.style.color = '#155724';
+            statusBox.className = 'fx-alert fx-alert-ok';
             statusBox.innerText = 'Delivery requested! We\'ll be in touch shortly.';
           }
 

@@ -1,202 +1,202 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
+<script src="/js/config.js"></script>
+<script src="/js/ui-helpers.js"></script>
+<script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
-
-    // 1. If no token in local storage, send back to login
     if (!token) {
-      window.location.href = '/index.html'; // Change to your login page filename if different
+      window.location.href = '/index.html';
       return;
     }
-
     try {
-      // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
+      const res = await fetch((window.API_BASE || '') + '/api/check-session', {
+        headers: { 'Authorization': 'Bearer ' + token }
       });
-
       const data = await res.json();
-
       if (!res.ok || !data.loggedIn) {
-        // Token expired or invalid -> Clear local storage & kick back
         localStorage.removeItem('token');
         window.location.href = '/index.html';
+      } else if (data.user.role !== 'admin') {
+        window.location.href = data.redirectUrl || '/customer.html';
       }
     } catch (err) {
       console.error('Session validation error:', err);
-      // Fallback: stay on page if backend server is temporarily unreachable
     }
   })();
+
+  function logoutAdmin() {
+    clearAuthToken();
+    window.location.href = '/login.html';
+  }
 </script>
-<script src="/js/config.js"></script>
-<script src="/js/ui-helpers.js"></script>
-  <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        }
-      });
-  </script>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Admin Dashboard</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="/socket.io/socket.io.js"></script>
-  <style>
-    body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
-    .dashboard-grid { display: flex; gap: 20px; flex-wrap: wrap; }
-    .section { flex: 1; min-width: 300px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    #map { height: 400px; width: 100%; border-radius: 8px; margin-top: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
-    th { background: #007bff; color: white; }
-    .status { font-weight: bold; margin-bottom: 10px; }
-    .status-badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-    .status-pending { background: #fff3cd; color: #856404; }
-    .status-assigned { background: #cce5ff; color: #004085; }
-    .status-picked_up { background: #d1ecf1; color: #0c5460; }
-    .status-delivered { background: #d4edda; color: #155724; }
-    button.small-btn { width: auto; padding: 4px 8px; font-size: 12px; margin-right: 4px; }
-  </style>
+  <link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
 
-  <h2>Admin Command Center - Johannes Deliveries</h2>
-
-  <div class="dashboard-grid">
-    <div class="section">
-      <div class="status" id="driverCount">Drivers Online: 0</div>
-      <label>Live Fleet Tracking</label>
-      <div id="map"></div>
+  <div class="fx-shell" style="max-width: 1200px;">
+    <div class="fx-nav">
+      <div class="fx-nav-title">
+        <div class="fx-logo-mark">JD</div>
+        <div>
+          <span class="fx-pill">Admin</span>
+          <h2 style="margin:6px 0 0;">Fleet & orders dashboard</h2>
+        </div>
+      </div>
+      <button class="fx-btn-danger" style="width:auto;" onclick="logoutAdmin()">Logout</button>
     </div>
 
-    <div class="section">
-      <div class="status">Incoming Customer Orders</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Customer</th>
-            <th>Pickup</th>
-            <th>Drop-off</th>
-            <th>Item</th>
-            <th>Amount</th>
-            <th>Payment</th>
-            <th>Status</th>
-            <th>Driver</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="ordersTableBody">
-          <tr><td colspan="9"><span class="inline-spinner"></span>Loading orders...</td></tr>
-        </tbody>
-      </table>
+    <div class="dashboard-grid">
+
+      <div class="section fx-card">
+        <div class="fx-eyebrow">Live tracking</div>
+        <h3 style="margin-top:0;">Driver fleet</h3>
+        <div id="map"></div>
+        <p class="fx-muted" id="fleetCount" style="margin-top:10px;">Waiting for driver positions...</p>
+      </div>
+
+      <div class="section fx-card">
+        <div class="fx-eyebrow">Operations</div>
+        <h3 style="margin-top:0;">Orders</h3>
+        <div class="fx-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Item</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Driver</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+              <tr><td colspan="6" class="fx-muted">Loading orders...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    const map = L.map('map').setView([-20.1350, 28.5800], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const driverMarkers = {};
+
+    function upsertDriverMarker(d) {
+      if (driverMarkers[d.driverId]) {
+        driverMarkers[d.driverId].setLatLng([d.lat, d.lng]);
+      } else {
+        driverMarkers[d.driverId] = L.marker([d.lat, d.lng]).addTo(map)
+          .bindPopup(`<b>${d.driverId}</b>`);
+      }
+    }
+
     const socket = io(window.API_BASE || undefined, {
       auth: { token: getAuthToken() }
     });
-    const map = L.map('map').setView([-20.1500, 28.5833], 13);
-    let driverMarkers = {};
-    let onlineDriverIds = [];
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
 
     socket.on('update_fleet', (drivers) => {
-      document.getElementById('driverCount').innerText = `Drivers Online: ${drivers.length}`;
-      onlineDriverIds = drivers.map(d => d.driverId);
-
-      Object.keys(driverMarkers).forEach(id => map.removeLayer(driverMarkers[id]));
-
-      drivers.forEach(driver => {
-        driverMarkers[driver.driverId] = L.marker([driver.lat, driver.lng])
-          .addTo(map)
-          .bindPopup(`<b>Driver: ${driver.driverId}</b>`)
-          .openPopup();
-      });
+      document.getElementById('fleetCount').innerText =
+        drivers.length ? `${drivers.length} driver(s) currently tracked.` : 'No drivers are currently broadcasting location.';
+      drivers.forEach(upsertDriverMarker);
     });
 
-    function renderOrders(orders) {
-      const tbody = document.getElementById('ordersTableBody');
-      tbody.innerHTML = '';
+    socket.on('update_orders', (orders) => renderOrders(orders));
 
-      orders.forEach(order => {
-        const row = document.createElement('tr');
-        const statusLabel = (order.status || 'pending').replace('_', ' ');
-        const paymentLabel = order.paymentMethod === 'EcoCash'
-          ? `EcoCash (${order.ecocashNumber || 'no number'}) - ${order.paymentStatus || 'pending'}`
-          : (order.paymentMethod || 'Cash');
+    // ---- Orders ----
+    let driverListCache = null;
 
-        row.innerHTML = `
-          <td>${order.customerName}</td>
-          <td>${order.pickup}</td>
-          <td>${order.dropoff}</td>
-          <td>${order.item || '-'}</td>
-          <td>$${(order.amount || 0).toFixed(2)}</td>
-          <td>${paymentLabel}</td>
-          <td><span class="status-badge status-${order.status || 'pending'}">${statusLabel}</span></td>
-          <td>${order.assignedDriver || '-'}</td>
-          <td>
-            <button class="small-btn" onclick="assignDriver('${order._id}', this)">Assign driver</button>
-            <button class="small-btn" onclick="cycleStatus('${order._id}', '${order.status || 'pending'}', this)">Advance status</button>
-          </td>
-        `;
-        tbody.appendChild(row);
-      });
+    function statusBadge(status) {
+      return `<span class="status-badge status-${status}">${status.replace('_',' ')}</span>`;
     }
 
-    socket.on('update_orders', renderOrders);
-
-    authFetch(`${window.API_BASE}/api/orders`)
-      .then(res => res.json())
-      .then(renderOrders);
-
-    async function assignDriver(orderId, button) {
-      if (onlineDriverIds.length === 0) {
-        alert('No drivers are currently online to assign.');
-        return;
-      }
-      const driverEmail = prompt(`Assign which driver? Online drivers: ${onlineDriverIds.join(', ')}`);
+    async function assignDriver(orderId, selectEl) {
+      const driverEmail = selectEl.value;
       if (!driverEmail) return;
-
-      setButtonLoading(button, true, 'Assigning...');
+      selectEl.disabled = true;
       try {
-        await authFetch(`${window.API_BASE}/api/orders/${orderId}/assign`, {
+        const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/assign`, {
           method: 'PATCH',
           body: JSON.stringify({ driverEmail })
         });
-      } finally {
-        setButtonLoading(button, false);
+        const data = await res.json();
+        if (!data.success) {
+          showToast(data.message || 'Could not assign driver.', 'error');
+          selectEl.disabled = false;
+        }
+      } catch (err) {
+        showToast('Server error assigning driver.', 'error');
+        selectEl.disabled = false;
       }
     }
 
-    const statusOrder = ['pending', 'assigned', 'picked_up', 'delivered'];
-    async function cycleStatus(orderId, currentStatus, button) {
-      const currentIndex = statusOrder.indexOf(currentStatus);
-      const nextStatus = statusOrder[Math.min(currentIndex + 1, statusOrder.length - 1)];
-
-      setButtonLoading(button, true, 'Updating...');
+    async function updateStatus(orderId, status) {
       try {
-        await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+        const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
           method: 'PATCH',
-          body: JSON.stringify({ status: nextStatus })
+          body: JSON.stringify({ status })
         });
-      } finally {
-        setButtonLoading(button, false);
+        const data = await res.json();
+        if (!data.success) showToast(data.message || 'Could not update status.', 'error');
+      } catch (err) {
+        showToast('Server error updating status.', 'error');
       }
     }
+
+    function renderOrders(orders) {
+      const tbody = document.getElementById('ordersTableBody');
+      if (!orders.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="fx-muted">No orders yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = orders.map(o => `
+        <tr>
+          <td>${o.customerName}<div class="fx-muted" style="font-size:11.5px;">${o.pickup} &rarr; ${o.dropoff}</div></td>
+          <td>${o.item || '<i>-</i>'}</td>
+          <td>$${(o.amount || 0).toFixed(2)}</td>
+          <td>${statusBadge(o.status)}</td>
+          <td>${o.assignedDriver || '<i>Unassigned</i>'}</td>
+          <td>
+            <select onchange="assignDriver('${o._id}', this)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
+              <option value="">Assign driver...</option>
+              ${(driverListCache || []).map(d => `<option value="${d}" ${o.assignedDriver === d ? 'selected' : ''}>${d}</option>`).join('')}
+            </select>
+            <select onchange="updateStatus('${o._id}', this.value)" style="width:auto; padding:4px 6px; margin:4px 0 0; font-size:12px;">
+              <option value="">Set status...</option>
+              ${['pending','assigned','picked_up','delivered','cancelled','failed'].map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.replace('_',' ')}</option>`).join('')}
+            </select>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadOrders() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/orders`);
+        const orders = await res.json();
+        driverListCache = [...new Set(orders.filter(o => o.assignedDriver).map(o => o.assignedDriver))];
+        renderOrders(orders);
+      } catch (err) {
+        document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="6" class="fx-muted">Could not load orders.</td></tr>';
+      }
+    }
+
+    loadOrders();
   </script>
 </body>
 </html>
