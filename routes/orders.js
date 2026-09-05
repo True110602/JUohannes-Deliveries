@@ -73,7 +73,10 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
+// Admin-only: the full order book, across every customer. Previously this
+// had no auth check at all, so anyone with the URL could see every
+// customer's name, pickup/dropoff, and order amount.
+router.get('/', ...requireRole('admin'), async (req, res) => {
   try {
     const allOrders = await Order.find().sort({ createdAt: -1 });
     res.json(allOrders);
