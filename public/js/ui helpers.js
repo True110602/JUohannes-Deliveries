@@ -1,80 +1,124 @@
-// Shared location helper used across the app (driver GPS tracking,
-// customer "use my location"). Uses the Capacitor Geolocation plugin's
-// native permission flow when running inside the Android app, and falls
-// back to the plain browser API when this page is opened in a normal
-// browser instead (e.g. for testing).
+// Shared UI helpers used across every page (button loading states,
+// lightweight toast notifications). Previously this file didn't
+// actually exist under this name — pages loaded "/js/ui-helpers.js"
+// (hyphen) while the real file on disk was "ui helpers.js" (space),
+// so the request 404'd silently and setButtonLoading() was undefined
+// wherever it was called.
 
-(function () {
-  function isNativeGeolocationAvailable() {
-    return !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation);
+function setButtonLoading(button, isLoading, loadingText) {
+  if (!button) return;
+
+  if (isLoading) {
+    if (button.dataset.fxOriginalHtml === undefined) {
+      button.dataset.fxOriginalHtml = button.innerHTML;
+    }
+    button.disabled = true;
+    button.innerHTML = `<span class="inline-spinner"></span>${loadingText || 'Please wait...'}`;
+  } else {
+    button.disabled = false;
+    if (button.dataset.fxOriginalHtml !== undefined) {
+      button.innerHTML = button.dataset.fxOriginalHtml;
+      delete button.dataset.fxOriginalHtml;
+    }
+  }
+}
+
+// Wires up a drag-and-drop / click-to-browse image upload zone.
+// dropZoneId: the container div (also the click target)
+// fileInputId: the hidden <input type="file"> inside it
+// previewImgId: an <img> element used to preview the uploaded picture
+// hiddenUrlInputId: a hidden input that stores the resulting URL, so
+//   existing form submission code that reads it doesn't need to change
+// onUploaded(url): optional callback fired after a successful upload
+// Uploads go to /api/merchant/upload-image via authFetch (merchant-only).
+function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlInputId, onUploaded }) {
+  const zone = document.getElementById(dropZoneId);
+  const input = document.getElementById(fileInputId);
+  const preview = previewImgId ? document.getElementById(previewImgId) : null;
+  const hiddenInput = hiddenUrlInputId ? document.getElementById(hiddenUrlInputId) : null;
+  if (!zone || !input) return;
+
+  function showPreview(url) {
+    if (preview && url) {
+      preview.src = url;
+      preview.classList.add('fx-has-image');
+    }
   }
 
-  async function ensurePermission() {
-    if (!isNativeGeolocationAvailable()) return true; // the browser handles its own permission prompt
-    const Geolocation = window.Capacitor.Plugins.Geolocation;
-    const status = await Geolocation.checkPermissions();
-    if (status.location === 'granted') return true;
-    const requested = await Geolocation.requestPermissions();
-    return requested.location === 'granted';
-  }
+  // If a URL is already set (e.g. loaded from a saved profile), show it.
+  if (hiddenInput && hiddenInput.value) showPreview(hiddenInput.value);
 
-  const PERMISSION_DENIED_MESSAGE = "Location permission was denied. Please enable it in your phone's Settings > Apps > Johannes Deliveries > Permissions.";
-
-  // One-off position fetch - e.g. a "Use my current location" button.
-  // Returns a Promise resolving to { lat, lng }.
-  window.getCurrentLocation = async function () {
-    const granted = await ensurePermission();
-    if (!granted) {
-      throw new Error(PERMISSION_DENIED_MESSAGE);
-    }
-
-    if (isNativeGeolocationAvailable()) {
-      const Geolocation = window.Capacitor.Plugins.Geolocation;
-      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 5000 });
-      return { lat: position.coords.latitude, lng: position.coords.longitude };
-    } else if (navigator.geolocation) {
-      return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
-          (error) => reject(new Error(error.message)),
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
-      });
-    } else {
-      throw new Error('Geolocation is not supported on this device/browser.');
-    }
-  };
-
-  // Continuous watch - e.g. driver GPS broadcasting. onPosition(lat, lng)
-  // fires on every update; onError(Error) fires on failure/denial.
-  window.watchLocation = async function (onPosition, onError) {
-    const granted = await ensurePermission();
-    if (!granted) {
-      onError(new Error(PERMISSION_DENIED_MESSAGE));
+  async function uploadFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please choose an image file.', 'error');
       return;
     }
 
-    if (isNativeGeolocationAvailable()) {
-      const Geolocation = window.Capacitor.Plugins.Geolocation;
-      try {
-        await Geolocation.watchPosition(
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 },
-          (position, err) => {
-            if (err) { onError(new Error(err.message || 'Unknown location error')); return; }
-            if (position) onPosition(position.coords.latitude, position.coords.longitude);
-          }
-        );
-      } catch (err) {
-        onError(err);
+    const zoneTextEl = zone.querySelector('.fx-drop-zone-text');
+    const originalText = zoneTextEl ? zoneTextEl.innerHTML : null;
+    if (zoneTextEl) zoneTextEl.innerHTML = '<span class="inline-spinner fx-spinner-light"></span>Uploading...';
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await authFetch(`${window.API_BASE}/api/merchant/upload-image`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        const fullUrl = data.url.startsWith('http') ? data.url : `${window.API_BASE}${data.url}`;
+        if (hiddenInput) hiddenInput.value = fullUrl;
+        showPreview(fullUrl);
+        if (onUploaded) onUploaded(fullUrl);
+      } else {
+        showToast(data.message || 'Upload failed.', 'error');
       }
-    } else if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(
-        (position) => onPosition(position.coords.latitude, position.coords.longitude),
-        (error) => onError(new Error(error.message)),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-      );
-    } else {
-      onError(new Error('Geolocation is not supported on this device/browser.'));
+    } catch (err) {
+      showToast('Server error uploading image.', 'error');
+    } finally {
+      if (zoneTextEl && originalText !== null) zoneTextEl.innerHTML = originalText;
     }
-  };
-})();
+  }
+
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => uploadFile(input.files[0]));
+
+  ['dragover', 'dragenter'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      zone.classList.add('fx-drop-active');
+    });
+  });
+  ['dragleave', 'dragend', 'drop'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      zone.classList.remove('fx-drop-active');
+    });
+  });
+  zone.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    uploadFile(file);
+  });
+}
+
+function showToast(message, type) {
+  let stack = document.querySelector('.fx-toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'fx-toast-stack';
+    document.body.appendChild(stack);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `fx-toast ${type === 'error' ? 'err' : type === 'success' ? 'ok' : ''}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity .25s ease';
+    setTimeout(() => toast.remove(), 250);
+  }, 3500);
+}
