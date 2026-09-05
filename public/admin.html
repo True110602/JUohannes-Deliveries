@@ -3,7 +3,6 @@
 <head>
 <script src="/js/config.js"></script>
 <script src="/js/ui-helpers.js"></script>
-<<<<<<< HEAD
 <script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
@@ -32,18 +31,10 @@
     window.location.href = '/login.html';
   }
 </script>
-
-  <script>
-    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        }
-      });
-  </script>
-918a5da9c6707dcdacceb420e886496643290526
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Admin Dashboard</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -51,12 +42,11 @@
   <link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
-<<<<<<< HEAD
 
   <div class="fx-shell" style="max-width: 1200px;">
     <div class="fx-nav">
       <div class="fx-nav-title">
-        <div class="fx-logo-mark">JD</div>
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
         <div>
           <span class="fx-pill">Admin</span>
           <h2 style="margin:6px 0 0;">Fleet & orders dashboard</h2>
@@ -198,20 +188,31 @@
       `).join('');
     }
 
+    // Previously this list was built only from orders that already had a
+    // driver assigned - meaning there was no way to assign a driver for
+    // the very first time (empty dropdown, nothing to pick). It now comes
+    // from the actual registered drivers.
+    async function loadDrivers() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/admin/drivers`);
+        driverListCache = await res.json();
+      } catch (err) {
+        console.error('Could not load driver list', err);
+        driverListCache = [];
+      }
+    }
+
     async function loadOrders() {
       try {
         const res = await authFetch(`${window.API_BASE}/api/orders`);
         const orders = await res.json();
-        driverListCache = [...new Set(orders.filter(o => o.assignedDriver).map(o => o.assignedDriver))];
         renderOrders(orders);
       } catch (err) {
         document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="6" class="fx-muted">Could not load orders.</td></tr>';
       }
     }
 
-    loadOrders();
+    loadDrivers().then(loadOrders);
   </script>
 </body>
 </html>
-=======
->>>>>>> 918a5da9c6707dcdacceb420e886496643290526
