@@ -94,13 +94,17 @@ a{ color: var(--accent); }
   justify-content: center;
   margin-bottom: 22px;
 }
-.fx-brand .fx-logo-mark{
+.fx-brand .fx-logo-mark, .fx-logo-mark{
   width: 38px; height: 38px;
   border-radius: 11px;
-  background: var(--grad);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; color: #06121a; font-size: 18px;
-  box-shadow: 0 0 24px rgba(94,234,212,0.45);
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* fallback badge only used if the logo image itself fails to load */
+img.fx-logo-mark{
+  background: transparent;
+  filter: drop-shadow(0 0 14px rgba(0,123,255,0.35));
 }
 .fx-brand .fx-brand-text{
   font-size: 15px;
@@ -338,6 +342,59 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 .fx-toast.ok{ border-color: rgba(74,222,128,0.4); }
 .fx-toast.err{ border-color: rgba(255,93,122,0.4); }
 @keyframes fx-toast-in{ from{ opacity:0; transform: translateY(-6px);} to{opacity:1; transform:none;} }
+
+/* ---------- image upload drop zone (merchant profile / catalog items) ---------- */
+.fx-drop-zone{
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(6,10,20,0.35);
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+.fx-drop-zone:hover, .fx-drop-zone.fx-drop-active{
+  border-color: var(--accent);
+  background: rgba(94,234,212,0.06);
+}
+.fx-drop-zone input[type="file"]{ display: none; }
+.fx-drop-zone-text{ font-size: 13px; color: var(--text-1); }
+.fx-drop-zone-text b{ color: var(--accent); }
+.fx-drop-preview{
+  width: 56px; height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: none;
+}
+.fx-drop-preview.fx-has-image{ display: block; }
+
+/* ---------- shop picker (customer catalog) ---------- */
+.shop-grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 10px; }
+.shop-card{
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(120,140,180,0.05);
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s ease, transform .12s ease;
+}
+.shop-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
+.shop-card img{
+  width: 48px; height: 48px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  margin: 0 auto 8px;
+  display: block;
+}
+.shop-card-name{ font-weight: 600; font-size: 13.5px; }
+.shop-card-count{ font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
 
 @media (max-width: 480px){
   body{ padding: 14px; }
