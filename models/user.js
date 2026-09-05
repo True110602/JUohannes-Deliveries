@@ -8,6 +8,9 @@ const userSchema = new mongoose.Schema({
   address: { type: String, default: '' },
   paymentMethod: { type: String, default: 'Cash' },
   profilePicUrl: { type: String, default: '' },
+  // Merchant-only: the storefront name shown to customers browsing shops.
+  // Falls back to the merchant's email on the frontend when left blank.
+  shopName: { type: String, default: '' },
   bankDetails: {
     bankName: { type: String, default: '' },
     accountName: { type: String, default: '' },
