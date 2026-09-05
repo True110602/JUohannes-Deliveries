@@ -17,6 +17,7 @@ const { authenticateToken, JWT_SECRET } = require('./middleware/auth');
 const catalogRoutes = require('./routes/catalog');
 const orderRoutes = require('./routes/orders');
 const merchantRoutes = require('./routes/merchant');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const server = http.createServer(app);
@@ -80,6 +81,7 @@ mongoose.connection.once('open', () => {
 });
 
 // --- NODEMAILER (password reset emails) ---
+const EMAIL_CONFIGURED = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
 const transporter = nodemailer.createTransport({
   service: process.env.EMAIL_SERVICE || 'gmail',
   auth: {
@@ -87,6 +89,26 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+
+if (!EMAIL_CONFIGURED) {
+  console.warn('EMAIL_USER / EMAIL_PASS not set - password reset emails cannot be sent.');
+} else {
+  // Verify the SMTP credentials at boot so a bad password/app-password shows
+  // up clearly in the server logs right away, instead of only failing (with
+  // a generic message) the first time a user actually requests a reset.
+  transporter.verify()
+    .then(() => console.log('\u2705 Email transporter ready - password reset emails can be sent'))
+    .catch((err) => {
+      console.error('------------------------------------------------------------');
+      console.error('\u274c Email transporter verification failed:', err.message);
+      if ((process.env.EMAIL_SERVICE || 'gmail') === 'gmail') {
+        console.error('If using Gmail: EMAIL_PASS must be a 16-character Google "App');
+        console.error('Password" (Google Account -> Security -> 2-Step Verification ->');
+        console.error('App passwords). A normal Gmail account password will be rejected.');
+      }
+      console.error('------------------------------------------------------------');
+    });
+}
 
 // --- PAYNOW (EcoCash payments) ---
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
@@ -233,6 +255,10 @@ app.post('/api/request-password-reset', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email is required.' });
     }
 
+    if (!EMAIL_CONFIGURED) {
+      return res.status(503).json({ success: false, message: 'Password reset email is not configured on the server yet. Contact the administrator.' });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ success: false, message: 'No account with that email was found.' });
@@ -253,8 +279,11 @@ app.post('/api/request-password-reset', async (req, res) => {
 
     res.json({ success: true, message: 'Verification code sent to email.' });
   } catch (err) {
-    console.error('Password Reset Request Error:', err);
-    res.status(500).json({ success: false, message: 'Failed to send reset code. Check server mail settings (EMAIL_USER/EMAIL_PASS env vars).' });
+    // Log the actual nodemailer error (e.g. "Invalid login") server-side -
+    // this is almost always a rejected/missing Gmail App Password, not a
+    // code bug, so the real reason only shows up here, in the Render logs.
+    console.error('Password Reset Request Error:', err.message || err);
+    res.status(500).json({ success: false, message: 'Failed to send reset code. Check the server logs for the exact mail error.' });
   }
 });
 
@@ -301,6 +330,7 @@ app.post('/api/reset-password', async (req, res) => {
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/merchant', merchantRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
