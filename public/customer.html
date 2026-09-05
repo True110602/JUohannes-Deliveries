@@ -52,6 +52,9 @@
     }
   </script>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Customer Portal</title>
 
@@ -67,7 +70,7 @@
   <div class="fx-shell" style="max-width: 700px;">
   <div class="fx-nav">
     <div class="fx-nav-title">
-      <div class="fx-logo-mark" style="width:32px;height:32px;font-size:14px;">JD</div>
+      <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
       <span class="fx-pill">Customer</span>
     </div>
     <button class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
@@ -94,8 +97,16 @@
       <button type="button" id="useMyLocationBtn" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
       <div id="map" style="width:100%; height:300px; margin-top:10px; margin-bottom:15px;"></div>
 
-      <h3>Available Menu</h3>
-      <div id="customerCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading menu...</div>
+      <h3>Shops</h3>
+      <div id="shopSelectionView">
+        <div id="shopGrid" class="shop-grid"><span class="inline-spinner fx-spinner-light"></span>Loading shops...</div>
+      </div>
+
+      <div id="shopMenuView" style="display:none;">
+        <button type="button" id="backToShopsBtn" class="fx-btn-muted" style="width:auto; margin-bottom:12px;">&larr; All shops</button>
+        <h4 id="currentShopName" style="margin:0 0 10px;"></h4>
+        <div id="customerCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading menu...</div>
+      </div>
 
       <div id="orderSummary" style="display:none;">
         <b>Your order:</b>
@@ -217,9 +228,53 @@
       renderOrderSummary();
     }
 
-    async function loadCustomerCatalog() {
+    // ---- Shop picker ----
+    // Customers previously landed on one combined list of every merchant's
+    // items with no way to tell which shop each came from. Now they pick a
+    // shop first, then see just that shop's menu.
+    async function loadShops() {
+      const grid = document.getElementById('shopGrid');
       try {
-        const res = await authFetch(`${window.API_BASE}/api/catalog`);
+        const res = await authFetch(`${window.API_BASE}/api/catalog/shops`);
+        const shops = await res.json();
+        grid.innerHTML = '';
+
+        if (!shops.length) {
+          grid.innerHTML = '<i class="fx-muted">No shops available right now.</i>';
+          return;
+        }
+
+        shops.forEach(shop => {
+          const card = document.createElement('div');
+          card.className = 'shop-card';
+          card.innerHTML = `
+            ${shop.profilePicUrl ? `<img src="${shop.profilePicUrl}" alt="${shop.shopName}" onerror="this.style.display='none'">` : ''}
+            <div class="shop-card-name">${shop.shopName}</div>
+            <div class="shop-card-count">${shop.itemCount} item${shop.itemCount === 1 ? '' : 's'}</div>
+          `;
+          card.addEventListener('click', () => selectShop(shop.merchantEmail, shop.shopName));
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        grid.innerHTML = '<i class="fx-muted">Could not load shops.</i>';
+      }
+    }
+
+    function selectShop(merchantEmail, shopName) {
+      document.getElementById('shopSelectionView').style.display = 'none';
+      document.getElementById('shopMenuView').style.display = 'block';
+      document.getElementById('currentShopName').innerText = shopName;
+      loadCustomerCatalog(merchantEmail);
+    }
+
+    document.getElementById('backToShopsBtn').addEventListener('click', () => {
+      document.getElementById('shopMenuView').style.display = 'none';
+      document.getElementById('shopSelectionView').style.display = 'block';
+    });
+
+    async function loadCustomerCatalog(merchantEmail) {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/catalog?merchant=${encodeURIComponent(merchantEmail)}`);
         const items = await res.json();
         const container = document.getElementById('customerCatalogList');
         container.innerHTML = '';
@@ -268,7 +323,7 @@
       }
     }
 
-    loadCustomerCatalog();
+    loadShops();
 
     document.getElementById('orderForm').addEventListener('submit', async (e) => {
       e.preventDefault();
