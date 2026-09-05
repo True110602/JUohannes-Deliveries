@@ -4,12 +4,13 @@ const User = require('../models/user');
 const CatalogItem = require('../models/CatalogItem');
 const Order = require('../models/Order');
 const { requireRole } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
-// Merchant's own profile - profile picture and bank/payout details,
-// persisted server-side so they follow the account across devices.
+// Merchant's own profile - shop name, profile picture and bank/payout
+// details, persisted server-side so they follow the account across devices.
 router.get('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('email profilePicUrl bankDetails');
+    const user = await User.findById(req.user.id).select('email shopName profilePicUrl bankDetails');
     if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
     res.json({ success: true, profile: user });
   } catch (err) {
@@ -19,18 +20,35 @@ router.get('/profile', ...requireRole('merchant'), async (req, res) => {
 
 router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const { profilePicUrl, bankName, accountName, accountNumber } = req.body;
+    const { shopName, profilePicUrl, bankName, accountName, accountNumber } = req.body;
     const update = {};
+    if (shopName !== undefined) update.shopName = shopName;
     if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
     if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
       update.bankDetails = { bankName, accountName, accountNumber };
     }
 
-    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email profilePicUrl bankDetails');
+    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email shopName profilePicUrl bankDetails');
     res.json({ success: true, profile: user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Upload an image file (shop profile picture or catalog item photo) from
+// the merchant's device - drag/drop or file picker on the frontend. Returns
+// the URL to store on the profile or catalog item (e.g. via PATCH /profile
+// or POST /api/catalog).
+router.post('/upload-image', ...requireRole('merchant'), (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, message: err.message || 'Upload failed.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file was received.' });
+    }
+    res.json({ success: true, url: `/uploads/${req.file.filename}` });
+  });
 });
 
 // Merchant's own items only (the public /api/catalog returns everyone's)
