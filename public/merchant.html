@@ -23,6 +23,9 @@
   })();
   </script>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Merchant Dashboard</title>
   <script src="/js/config.js"></script>
@@ -34,7 +37,7 @@
   <div class="fx-shell" style="max-width: 1000px;">
     <div class="fx-nav">
       <div class="fx-nav-title">
-        <div class="fx-logo-mark">JD</div>
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
         <div>
           <span class="fx-pill">Merchant</span>
           <h2 style="margin:6px 0 0;">Storefront dashboard</h2>
@@ -65,8 +68,16 @@
         <div class="fx-eyebrow">Payouts</div>
         <h3 style="margin-top:0;">Profile & bank details</h3>
         <form id="profileForm">
-          <label>Profile picture URL</label>
-          <input type="text" id="profilePicUrl" placeholder="https://...">
+          <label>Shop name</label>
+          <input type="text" id="shopName" placeholder="e.g. Bhekinkosi's Fast Food">
+
+          <label>Profile picture</label>
+          <div class="fx-drop-zone" id="profilePicDropZone">
+            <img id="profilePicPreview" class="fx-drop-preview" alt="Profile preview">
+            <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here</div>
+            <input type="file" id="profilePicFile" accept="image/*">
+          </div>
+          <input type="hidden" id="profilePicUrl">
 
           <label>Bank name</label>
           <input type="text" id="bankName" placeholder="e.g. CBZ Bank">
@@ -95,8 +106,13 @@
           <label>Description</label>
           <input type="text" id="itemDescription" placeholder="Short description (optional)">
 
-          <label>Image URL</label>
-          <input type="text" id="itemImageUrl" placeholder="https://... (optional)">
+          <label>Item picture</label>
+          <div class="fx-drop-zone" id="itemPicDropZone">
+            <img id="itemPicPreview" class="fx-drop-preview" alt="Item preview">
+            <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here (optional)</div>
+            <input type="file" id="itemPicFile" accept="image/*">
+          </div>
+          <input type="hidden" id="itemImageUrl">
 
           <button type="submit" style="margin-top:14px;">Add item</button>
         </form>
@@ -123,10 +139,16 @@
         const data = await res.json();
         if (data.success) {
           const p = data.profile;
+          document.getElementById('shopName').value = p.shopName || '';
           document.getElementById('profilePicUrl').value = p.profilePicUrl || '';
           document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
           document.getElementById('accountName').value = (p.bankDetails && p.bankDetails.accountName) || '';
           document.getElementById('accountNumber').value = (p.bankDetails && p.bankDetails.accountNumber) || '';
+          if (p.profilePicUrl) {
+            const preview = document.getElementById('profilePicPreview');
+            preview.src = p.profilePicUrl;
+            preview.classList.add('fx-has-image');
+          }
         }
       } catch (err) {
         console.error('Could not load profile', err);
@@ -208,6 +230,7 @@
         const res = await authFetch(`${window.API_BASE}/api/merchant/profile`, {
           method: 'PATCH',
           body: JSON.stringify({
+            shopName: document.getElementById('shopName').value,
             profilePicUrl: document.getElementById('profilePicUrl').value,
             bankName: document.getElementById('bankName').value,
             accountName: document.getElementById('accountName').value,
@@ -248,6 +271,10 @@
           statusEl.style.color = '#4ade80';
           statusEl.innerText = 'Item added!';
           e.target.reset();
+          document.getElementById('itemImageUrl').value = '';
+          const itemPreview = document.getElementById('itemPicPreview');
+          itemPreview.src = '';
+          itemPreview.classList.remove('fx-has-image');
           loadMyCatalog();
         } else {
           const data = await res.json().catch(() => ({}));
@@ -260,6 +287,20 @@
         statusEl.style.color = '#ff5d7a';
         statusEl.innerText = 'Server error adding item.';
       }
+    });
+
+    setupImageDropZone({
+      dropZoneId: 'profilePicDropZone',
+      fileInputId: 'profilePicFile',
+      previewImgId: 'profilePicPreview',
+      hiddenUrlInputId: 'profilePicUrl'
+    });
+
+    setupImageDropZone({
+      dropZoneId: 'itemPicDropZone',
+      fileInputId: 'itemPicFile',
+      previewImgId: 'itemPicPreview',
+      hiddenUrlInputId: 'itemImageUrl'
     });
 
     loadProfile();
