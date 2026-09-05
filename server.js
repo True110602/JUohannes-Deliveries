@@ -139,10 +139,19 @@ function getRedirectUrlByRole(role) {
 
 app.post('/api/register', async (req, res) => {
   try {
-    const { email, password, role, address, paymentMethod } = req.body;
+    const { name, email, phone, password, role, address, paymentMethod } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Name is required.' });
+    }
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ success: false, message: 'Phone number is required.' });
+    }
+    if (!address || !address.trim()) {
+      return res.status(400).json({ success: false, message: 'Address is required.' });
     }
 
     // Only customer/driver/merchant can be self-registered - admin stays
@@ -157,7 +166,9 @@ app.post('/api/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
+      name: name.trim(),
       email,
+      phone: phone.trim(),
       password: hashedPassword,
       role: chosenRole,
       address: address || '',
