@@ -10,6 +10,8 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { Paynow } = require('paynow');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const User = require('./models/user');
 const DriverLocation = require('./models/DriverLocation');
@@ -31,8 +33,50 @@ const io = new Server(server, {
 app.set('io', io);
 
 // --- MIDDLEWARE ---
+// helmet's default Content-Security-Policy blocks inline <script> tags,
+// which every page in this app currently uses - disabling just that part
+// (contentSecurityPolicy: false) while keeping helmet's other protections
+// (clickjacking prevention, MIME-sniffing protection, etc.) active.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
+
+// --- RATE LIMITING ---
+// Prevents brute-force password guessing, spam account creation, and
+// abuse of the password-reset flow (which sends real emails and involves
+// a guessable 6-digit code that would otherwise be brute-forceable).
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many accounts created from this network. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many password reset attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/', generalApiLimiter);
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -137,21 +181,49 @@ function getRedirectUrlByRole(role) {
 // AUTH ROUTES
 // ==========================================
 
-app.post('/api/register', async (req, res) => {
+// --- INPUT VALIDATION HELPERS ---
+// isPlainString guards against a NoSQL injection trick: MongoDB/Mongoose
+// query operators like { "$ne": null } are valid JSON, so if a field is
+// passed as an object instead of a string and used directly in a query
+// (e.g. User.findOne({ email })), an attacker could try to manipulate the
+// query logic. Requiring these fields to actually be strings first closes
+// that off.
+function isPlainString(val) {
+  return typeof val === 'string';
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Demo/seed accounts use bare usernames like "driver" rather than real
+// emails, so this only enforces email format for addresses containing an
+// "@" - plain usernames are left as-is for backward compatibility.
+function isValidEmailOrUsername(val) {
+  if (!isPlainString(val) || !val.trim()) return false;
+  if (val.includes('@')) return EMAIL_REGEX.test(val.trim());
+  return true;
+}
+
+function isValidPassword(val) {
+  return isPlainString(val) && val.length >= 6;
+}
+
+app.post('/api/register', registerLimiter, async (req, res) => {
   try {
     const { name, email, phone, password, role, address, paymentMethod } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required.' });
-    }
-    if (!name || !name.trim()) {
+    if (!isPlainString(name) || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Name is required.' });
     }
-    if (!phone || !phone.trim()) {
+    if (!isValidEmailOrUsername(email)) {
+      return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+    }
+    if (!isPlainString(phone) || !phone.trim()) {
       return res.status(400).json({ success: false, message: 'Phone number is required.' });
     }
-    if (!address || !address.trim()) {
+    if (!isPlainString(address) || !address.trim()) {
       return res.status(400).json({ success: false, message: 'Address is required.' });
+    }
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
     // Only customer/driver/merchant can be self-registered - admin stays
@@ -189,11 +261,11 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!isPlainString(email) || !isPlainString(password) || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide email and password.' });
     }
 
@@ -259,10 +331,10 @@ app.post('/api/seed-demo-users', async (req, res) => {
   }
 });
 
-app.post('/api/request-password-reset', async (req, res) => {
+app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (!isPlainString(email) || !email.trim()) {
       return res.status(400).json({ success: false, message: 'Email is required.' });
     }
 
@@ -271,24 +343,27 @@ app.post('/api/request-password-reset', async (req, res) => {
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'No account with that email was found.' });
+
+    // Always respond the same way whether or not the account exists, so
+    // this endpoint can't be used to check which emails are registered
+    // (a common account-enumeration attack). The email only actually
+    // sends if a matching account was found.
+    if (user) {
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = await bcrypt.hash(resetCode, 10);
+      user.resetCode = hashedCode;
+      user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
+      await user.save();
+
+      await transporter.sendMail({
+        from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Password Reset Verification Code - Johannes Deliveries',
+        text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
+      });
     }
 
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedCode = await bcrypt.hash(resetCode, 10);
-    user.resetCode = hashedCode;
-    user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
-    await user.save();
-
-    await transporter.sendMail({
-      from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Password Reset Verification Code - Johannes Deliveries',
-      text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
-    });
-
-    res.json({ success: true, message: 'Verification code sent to email.' });
+    res.json({ success: true, message: 'If that email is registered, a verification code has been sent.' });
   } catch (err) {
     // Log the actual nodemailer error (e.g. "Invalid login") server-side -
     // this is almost always a rejected/missing Gmail App Password, not a
@@ -298,12 +373,15 @@ app.post('/api/request-password-reset', async (req, res) => {
   }
 });
 
-app.post('/api/reset-password', async (req, res) => {
+app.post('/api/reset-password', passwordResetLimiter, async (req, res) => {
   try {
     const { email, resetCode, newPassword } = req.body;
 
-    if (!email || !resetCode || !newPassword) {
+    if (!isPlainString(email) || !isPlainString(resetCode) || !isPlainString(newPassword)) {
       return res.status(400).json({ success: false, message: 'All fields are required.' });
+    }
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
     const user = await User.findOne({ email, resetCodeExpires: { $gt: Date.now() } });
