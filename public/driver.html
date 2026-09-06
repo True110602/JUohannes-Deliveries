@@ -60,22 +60,41 @@
       clearAuthToken();
       window.location.href = '/login.html';
     }
-        function renderMyOrders(orders) {
-  const myEmail = document.getElementById('driverId').value;
-  const mine = orders.filter(o => o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled');
-  const container = document.getElementById('ordersList');
-  if (!mine.length) { container.innerHTML = 'No orders assigned yet.'; return; }
-  container.innerHTML = mine.map(o => `
-    <div class="fx-card" style="margin-top:10px;">
-      <div><b>Order #${o._id.slice(-6)}</b></div>
-      <div>Pickup: ${o.pickup}</div>
-      <div>Dropoff: ${o.dropoff}</div>
-      <div>Customer: ${o.customerName}</div>
-      <div>Status: ${o.status}</div>
-      ${o.status === 'assigned' ? `<button onclick="updateOrderStatus('${o._id}','picked_up')">Mark Picked Up</button>` : ''}
-      ${o.status === 'picked_up' ? `<button onclick="updateOrderStatus('${o._id}','delivered')">Mark Delivered</button>` : ''}
-    </div>`).join('');
-}
+       function renderMyOrders(orders) {
+      const myEmail = document.getElementById('driverId').value;
+      const mine = orders.filter(function(o) {
+        return o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled';
+      });
+      const container = document.getElementById('ordersList');
+      if (!mine.length) {
+        container.innerHTML = 'No orders assigned yet.';
+        return;
+      }
+      let html = '';
+      for (let i = 0; i < mine.length; i++) {
+        const o = mine[i];
+        let btn = '';
+        if (o.status === 'assigned') {
+          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'picked_up\')">Mark Picked Up</button>';
+        } else if (o.status === 'picked_up') {
+          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'delivered\')">Mark Delivered</button>';
+        }
+        html += '<div class="fx-card" style="margin-top:10px;">'
+          + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
+          + '<div>Pickup: ' + o.pickup + '</div>'
+          + '<div>Dropoff: ' + o.dropoff + '</div>'
+          + '<div>Customer: ' + o.customerName + '</div>'
+          + '<div>Status: ' + o.status + '</div>'
+          + btn
+          + '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    async function loadMyOrders() {
+      const res = await authFetch(window.API_BASE + '/api/orders/mine');
+      renderMyOrders(await res.json());
+    }
 
 async function loadMyOrders() {
   const res = await authFetch(`${window.API_BASE}/api/orders/mine`);
