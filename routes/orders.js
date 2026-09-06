@@ -84,6 +84,15 @@ router.get('/', ...requireRole('admin'), async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+// Driver-only: orders assigned to the logged-in driver.
+router.get('/mine', ...requireRole('driver'), async (req, res) => {
+  try {
+    const myOrders = await Order.find({ assignedDriver: req.user.email }).sort({ createdAt: -1 });
+    res.json(myOrders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 router.patch('/:id/assign', ...requireRole('admin'), async (req, res) => {
   try {
