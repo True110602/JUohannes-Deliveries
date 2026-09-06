@@ -50,16 +50,45 @@
       .then(data => {
         if (!data.loggedIn) {
           window.location.href = '/login.html';
-        } else {
+       }  else {
           const driverInput = document.getElementById('driverId');
           if (driverInput) driverInput.value = data.user.email;
+          loadMyOrders();
         }
-      });
 
     function logoutDriver() {
       clearAuthToken();
       window.location.href = '/login.html';
     }
+        function renderMyOrders(orders) {
+  const myEmail = document.getElementById('driverId').value;
+  const mine = orders.filter(o => o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled');
+  const container = document.getElementById('ordersList');
+  if (!mine.length) { container.innerHTML = 'No orders assigned yet.'; return; }
+  container.innerHTML = mine.map(o => `
+    <div class="fx-card" style="margin-top:10px;">
+      <div><b>Order #${o._id.slice(-6)}</b></div>
+      <div>Pickup: ${o.pickup}</div>
+      <div>Dropoff: ${o.dropoff}</div>
+      <div>Customer: ${o.customerName}</div>
+      <div>Status: ${o.status}</div>
+      ${o.status === 'assigned' ? `<button onclick="updateOrderStatus('${o._id}','picked_up')">Mark Picked Up</button>` : ''}
+      ${o.status === 'picked_up' ? `<button onclick="updateOrderStatus('${o._id}','delivered')">Mark Delivered</button>` : ''}
+    </div>`).join('');
+}
+
+async function loadMyOrders() {
+  const res = await authFetch(`${window.API_BASE}/api/orders/mine`);
+  renderMyOrders(await res.json());
+}
+
+async function updateOrderStatus(orderId, status) {
+  await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status })
+  });
+  loadMyOrders();
+}
   </script>
 
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
@@ -88,6 +117,9 @@
 
     <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
 
+    <label>Active Delivery</label>
+<div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
+
     <label>Live GPS Position</label>
     <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
   </div>
@@ -98,6 +130,7 @@
     const socket = io(window.API_BASE || undefined, {
       auth: { token: getAuthToken() }
     });
+    socket.on('update_orders', renderMyOrders);
     const map = L.map('map').setView([-20.1350, 28.5800], 15);
     let marker = null;
 
