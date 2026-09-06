@@ -1,6 +1,19 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key';
+// CRITICAL: no hardcoded fallback here. A fallback secret that's visible
+// in a public/shared repo means anyone could forge a valid token for any
+// account (including admin) by signing their own JWT with that same
+// known string. This must be set explicitly in the environment.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('------------------------------------------------------------');
+  console.error('CRITICAL ERROR: JWT_SECRET is not set.');
+  console.error('Set it in your environment variables (Render \u2192 Environment)');
+  console.error('to a long, random string - e.g. generate one with:');
+  console.error('  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+  console.error('------------------------------------------------------------');
+  process.exit(1);
+}
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
