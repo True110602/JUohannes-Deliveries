@@ -61,22 +61,64 @@ router.get('/catalog', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
-// Approximate sales stats - matches delivered orders whose "item" text
-// mentions one of this merchant's catalog item names. Orders currently
-// store items as a combined text field rather than structured line items
-// linking back to a specific catalog item/merchant, so this is an
-// estimate, not an exact figure.
+// Merchant's own orders - uses the structured lineItems recorded on each
+// order (added alongside the free-text "item" field) to reliably find
+// orders containing this merchant's items, rather than guessing from text.
+// Orders placed before lineItems existed just won't appear here, since
+// there's no reliable way to attribute them after the fact.
+router.get('/orders', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const myOrders = await Order.find({ 'lineItems.merchantEmail': req.user.email }).sort({ createdAt: -1 });
+    res.json(myOrders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Sales stats - uses structured lineItems where available (accurate: the
+// merchant's real share after driver + platform commission), and falls
+// back to the old item-name text-matching for orders placed before
+// lineItems existed, so historical figures don't just disappear.
 router.get('/stats', ...requireRole('merchant'), async (req, res) => {
   try {
-    const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
-    const myItemNames = myItems.map(i => i.name);
+    const deliveredOrders = await Order.find({ status: 'delivered' });
 
-    const allOrders = await Order.find({ status: 'delivered' });
-    const myOrders = allOrders.filter(o => myItemNames.some(name => (o.item || '').includes(name)));
+    let salesCount = 0;
+    let totalRevenue = 0;
 
-    const totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+    if (deliveredOrders.some(o => o.lineItems && o.lineItems.length > 0)) {
+      // At least some orders have structured data - use it for those,
+      // and keep the old heuristic only for orders that predate it.
+      const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
+      const myItemNames = myItems.map(i => i.name);
 
-    res.json({ success: true, salesCount: myOrders.length, totalRevenue });
+      deliveredOrders.forEach(o => {
+        const hasStructuredData = o.lineItems && o.lineItems.length > 0;
+        const isMine = hasStructuredData
+          ? o.lineItems.some(li => li.merchantEmail === req.user.email)
+          : myItemNames.some(name => (o.item || '').includes(name));
+
+        if (!isMine) return;
+
+        salesCount++;
+        // Merchant's actual take-home: order total minus driver and
+        // platform commission (both already computed at order time).
+        // Older orders have platformCommission = 0 since that field
+        // didn't exist yet, so this degrades gracefully rather than
+        // breaking historical numbers.
+        totalRevenue += (o.amount || 0) - (o.driverCommission || 0) - (o.platformCommission || 0);
+      });
+    } else {
+      // No orders anywhere have structured data yet (fresh install or
+      // fully historical dataset) - original approximate behavior.
+      const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
+      const myItemNames = myItems.map(i => i.name);
+      const myOrders = deliveredOrders.filter(o => myItemNames.some(name => (o.item || '').includes(name)));
+      salesCount = myOrders.length;
+      totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+    }
+
+    res.json({ success: true, salesCount, totalRevenue });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
