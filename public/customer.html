@@ -73,10 +73,18 @@
       <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
       <span class="fx-pill">Customer</span>
     </div>
+    <button class="fx-btn-ghost" style="width:auto;" onclick="showOrderHistory()">My Orders</button>
     <button class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
   </div>
 
-  <div class="fx-card">
+  <div class="fx-card" id="orderHistoryPanel" style="display:none;">
+    <div class="fx-eyebrow">Order history</div>
+    <h2 style="margin-top:0;">My Orders</h2>
+    <button type="button" class="fx-btn-muted" style="width:auto; margin-bottom:12px;" onclick="hideOrderHistory()">&larr; Back to new order</button>
+    <div id="orderHistoryList"><span class="inline-spinner fx-spinner-light"></span>Loading your orders...</div>
+  </div>
+
+  <div class="fx-card" id="newOrderPanel">
     <div class="fx-eyebrow">New request</div>
     <h2 style="margin-top:0;">Book a delivery / order</h2>
 
@@ -224,8 +232,29 @@
         if (select) selections[group.groupName] = select.value;
       });
 
-      orderItems.push({ name: item.name, selections });
+      orderItems.push({
+        name: item.name,
+        selections,
+        catalogItemId: item._id,
+        merchantEmail: item.merchantEmail,
+        price: item.price
+      });
       renderOrderSummary();
+    }
+
+    // Turns the running orderItems list into the structured lineItems
+    // shape the server stores - this is what lets a customer's order
+    // history and a merchant's own order view actually work, instead of
+    // only ever having the free-text summary below.
+    function buildLineItemsPayload() {
+      return orderItems.map(entry => ({
+        catalogItemId: entry.catalogItemId,
+        merchantEmail: entry.merchantEmail,
+        name: entry.name,
+        price: entry.price,
+        quantity: 1,
+        selectedOptions: entry.selections
+      }));
     }
 
     // ---- Shop picker ----
@@ -325,6 +354,55 @@
 
     loadShops();
 
+    // --- Order history ---
+    function showOrderHistory() {
+      document.getElementById('newOrderPanel').style.display = 'none';
+      document.getElementById('orderHistoryPanel').style.display = 'block';
+      loadOrderHistory();
+    }
+
+    function hideOrderHistory() {
+      document.getElementById('orderHistoryPanel').style.display = 'none';
+      document.getElementById('newOrderPanel').style.display = 'block';
+    }
+
+    async function loadOrderHistory() {
+      const list = document.getElementById('orderHistoryList');
+      list.innerHTML = '<span class="inline-spinner fx-spinner-light"></span>Loading your orders...';
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/orders/my-history`);
+        const orders = await res.json();
+
+        if (!Array.isArray(orders) || orders.length === 0) {
+          list.innerHTML = '<i class="fx-muted">You haven\'t placed any orders yet.</i>';
+          return;
+        }
+
+        list.innerHTML = '';
+        orders.forEach(order => {
+          const div = document.createElement('div');
+          div.className = 'catalog-item';
+          const when = new Date(order.createdAt).toLocaleString();
+          const itemsText = (order.lineItems && order.lineItems.length > 0)
+            ? order.lineItems.map(li => li.name).join(', ')
+            : (order.item || 'N/A');
+
+          div.innerHTML = `
+            <div class="catalog-item-top">
+              <div>
+                <b>${itemsText}</b>
+                <div class="catalog-desc">${when} &middot; $${(order.amount || 0).toFixed(2)} &middot; ${order.paymentMethod}</div>
+              </div>
+              <span class="fx-pill">${(order.status || 'pending').replace('_', ' ')}</span>
+            </div>
+          `;
+          list.appendChild(div);
+        });
+      } catch (err) {
+        list.innerHTML = '<i class="fx-muted">Could not load your order history.</i>';
+      }
+    }
+
     document.getElementById('orderForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
@@ -333,6 +411,7 @@
         pickup: formData.get('pickup'),
         dropoff: formData.get('dropoff'),
         item: formData.get('item'),
+        lineItems: buildLineItemsPayload(),
         amount: formData.get('amount'),
         paymentMethod: formData.get('paymentMethod'),
         ecocashNumber: formData.get('ecocashNumber') || null
