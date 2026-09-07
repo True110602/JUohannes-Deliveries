@@ -31,6 +31,11 @@
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <link rel="stylesheet" href="/css/theme.css" />
+  <style>
+    .option-group-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .option-group-row input { margin: 0; }
+    .option-group-row button { width: auto; margin: 0; padding: 8px 12px; background: rgba(255,93,122,0.15); color: #ff5d7a; box-shadow: none; }
+  </style>
 </head>
 <body>
 
@@ -114,6 +119,12 @@
           </div>
           <input type="hidden" id="itemImageUrl">
 
+          <label>Options (sauces, sides, colour, size - anything customers should choose from)</label>
+          <div id="optionGroupsBuilder" class="fx-drop-zone" style="cursor:default; padding:14px;">
+            <div id="optionGroupsList"></div>
+            <button type="button" id="addOptionGroupBtn" class="fx-btn-muted" style="margin-top:4px;">+ Add option (e.g. Sauce, Colour, Size)</button>
+          </div>
+
           <button type="submit" style="margin-top:14px;">Add item</button>
         </form>
         <p id="itemStatus" class="fx-status"></p>
@@ -122,6 +133,12 @@
 
         <h3 style="margin-top:0;">My items</h3>
         <div id="myCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading your catalog...</div>
+      </div>
+
+      <div class="section fx-card" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Orders</div>
+        <h3 style="margin-top:0;">Incoming orders</h3>
+        <div id="myOrdersList"><span class="inline-spinner fx-spinner-light"></span>Loading orders...</div>
       </div>
 
     </div>
@@ -133,12 +150,86 @@
       window.location.href = '/login.html';
     }
 
+    // --- Option group builder ---
+    // Each row lets the merchant name a group (e.g. "Sauce") and list its
+    // choices comma-separated (e.g. "BBQ, Peri-Peri, None"). Fully generic
+    // so it works for food (sauces, sides) or anything else (colour, size).
+    function addOptionGroupRow() {
+      const list = document.getElementById('optionGroupsList');
+      const row = document.createElement('div');
+      row.className = 'option-group-row';
+      row.innerHTML = `
+        <input type="text" class="group-name" placeholder="Option name, e.g. Sauce">
+        <input type="text" class="group-choices" placeholder="Choices, comma separated, e.g. BBQ, Peri-Peri, None">
+        <button type="button" onclick="this.parentElement.remove()">Remove</button>
+      `;
+      list.appendChild(row);
+    }
+
+    function collectOptionGroups() {
+      const rows = document.querySelectorAll('#optionGroupsList .option-group-row');
+      const groups = [];
+      rows.forEach(row => {
+        const groupName = row.querySelector('.group-name').value.trim();
+        const choicesRaw = row.querySelector('.group-choices').value.trim();
+        if (groupName && choicesRaw) {
+          const choices = choicesRaw.split(',').map(c => c.trim()).filter(Boolean);
+          if (choices.length > 0) groups.push({ groupName, choices });
+        }
+      });
+      return groups;
+    }
+
+    document.getElementById('addOptionGroupBtn').addEventListener('click', addOptionGroupRow);
+
+    // --- Incoming orders ---
+    // Uses the structured lineItems recorded on each order to reliably
+    // find orders containing this merchant's items.
+    async function loadMyOrders() {
+      const list = document.getElementById('myOrdersList');
+      list.innerHTML = '<span class="inline-spinner fx-spinner-light"></span>Loading orders...';
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/orders`);
+        const orders = await res.json();
+
+        if (!Array.isArray(orders) || orders.length === 0) {
+          list.innerHTML = '<i class="fx-muted">No orders yet. Orders placed after your items were added will show up here.</i>';
+          return;
+        }
+
+        list.innerHTML = '';
+        orders.forEach(order => {
+          const myLines = (order.lineItems || []).filter(li => li.merchantEmail === currentMerchantEmail);
+          const itemsText = myLines.length ? myLines.map(li => li.name).join(', ') : (order.item || 'N/A');
+          const when = new Date(order.createdAt).toLocaleString();
+
+          const div = document.createElement('div');
+          div.className = 'catalog-item';
+          div.innerHTML = `
+            <div class="catalog-item-top">
+              <div>
+                <b>${itemsText}</b>
+                <div class="catalog-desc">${when} &middot; ${order.customerName}</div>
+              </div>
+              <span class="fx-pill">${(order.status || 'pending').replace('_', ' ')}</span>
+            </div>
+          `;
+          list.appendChild(div);
+        });
+      } catch (err) {
+        list.innerHTML = '<i class="fx-muted">Could not load orders.</i>';
+      }
+    }
+
+    let currentMerchantEmail = null;
+
     async function loadProfile() {
       try {
         const res = await authFetch(`${window.API_BASE}/api/merchant/profile`);
         const data = await res.json();
         if (data.success) {
           const p = data.profile;
+          currentMerchantEmail = p.email;
           document.getElementById('shopName').value = p.shopName || '';
           document.getElementById('profilePicUrl').value = p.profilePicUrl || '';
           document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
@@ -262,7 +353,8 @@
             name: document.getElementById('itemName').value,
             price: parseFloat(document.getElementById('itemPrice').value) || 0,
             description: document.getElementById('itemDescription').value,
-            imageUrl: document.getElementById('itemImageUrl').value
+            imageUrl: document.getElementById('itemImageUrl').value,
+            optionGroups: collectOptionGroups()
           })
         });
 
@@ -272,6 +364,7 @@
           statusEl.innerText = 'Item added!';
           e.target.reset();
           document.getElementById('itemImageUrl').value = '';
+          document.getElementById('optionGroupsList').innerHTML = '';
           const itemPreview = document.getElementById('itemPicPreview');
           itemPreview.src = '';
           itemPreview.classList.remove('fx-has-image');
@@ -303,7 +396,7 @@
       hiddenUrlInputId: 'itemImageUrl'
     });
 
-    loadProfile();
+    loadProfile().then(loadMyOrders);
     loadStats();
     loadMyCatalog();
   </script>
