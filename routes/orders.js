@@ -1,13 +1,37 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
-const { requireRole, authenticateToken } = require('../middleware/auth');
+const { requireRole, authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
-const DRIVER_COMMISSION_RATE = 0.10; // 10% - drivers earn this share of each order's amount
+const DRIVER_COMMISSION_RATE = 0.10;   // 10% - drivers earn this share of each order's amount
+// What the platform itself keeps from each order. Previously this had no
+// defined value anywhere - only the driver's cut was ever calculated,
+// which meant there was no visible answer to "how does this make money
+// for its owner". The remainder (100% - driver - platform) is the
+// merchant's share.
+const PLATFORM_COMMISSION_RATE = 0.15; // 15% - adjust to whatever rate fits the business
 
-router.post('/', async (req, res) => {
+// Reads a Bearer token if one is present, without failing the request if
+// it's missing or invalid - used here so an order can be linked to the
+// customer's account when they're logged in, without turning this into a
+// route that suddenly requires auth (customer.html already gates the
+// order page behind login today, but this keeps the endpoint itself
+// exactly as permissive as it was before).
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return next();
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (!err) req.user = decoded;
+    next();
+  });
+}
+
+router.post('/', optionalAuth, async (req, res) => {
   try {
-    const { customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, amount } = req.body;
+    const { customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, amount, lineItems } = req.body;
 
     if (!customerName || !pickup || !dropoff) {
       return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
@@ -23,13 +47,16 @@ router.post('/', async (req, res) => {
 
     const order = new Order({
       customerName,
+      customerEmail: (req.user && req.user.email) || null,
       pickup,
       dropoff,
       item: item || '',
+      lineItems: Array.isArray(lineItems) ? lineItems : [],
       amount: orderAmount,
       paymentMethod: paymentMethod || 'Cash',
       ecocashNumber: ecocashNumber || null,
-      driverCommission: orderAmount * DRIVER_COMMISSION_RATE
+      driverCommission: orderAmount * DRIVER_COMMISSION_RATE,
+      platformCommission: orderAmount * PLATFORM_COMMISSION_RATE
     });
 
     const paynow = req.app.get('paynow');
@@ -88,6 +115,17 @@ router.get('/', ...requireRole('admin'), async (req, res) => {
 router.get('/mine', ...requireRole('driver'), async (req, res) => {
   try {
     const myOrders = await Order.find({ assignedDriver: req.user.email }).sort({ createdAt: -1 });
+    res.json(myOrders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Customer order history - previously impossible, since orders had no
+// link back to the account that placed them at all.
+router.get('/my-history', authenticateToken, async (req, res) => {
+  try {
+    const myOrders = await Order.find({ customerEmail: req.user.email }).sort({ createdAt: -1 });
     res.json(myOrders);
   } catch (err) {
     res.status(500).json({ message: err.message });
