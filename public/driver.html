@@ -45,22 +45,15 @@
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
   <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-       }  else {
-          const driverInput = document.getElementById('driverId');
-          if (driverInput) driverInput.value = data.user.email;
-          loadMyOrders();
-        }
-
+    // These are declared at the top level (not nested inside the .then()
+    // below) so that the Logout button's onclick, the socket.io handler,
+    // and the map script further down the page can all actually see them.
     function logoutDriver() {
       clearAuthToken();
       window.location.href = '/login.html';
     }
-       function renderMyOrders(orders) {
+
+    function renderMyOrders(orders) {
       const myEmail = document.getElementById('driverId').value;
       const mine = orders.filter(function(o) {
         return o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled';
@@ -92,22 +85,29 @@
     }
 
     async function loadMyOrders() {
-      const res = await authFetch(window.API_BASE + '/api/orders/mine');
+      const res = await authFetch(`${window.API_BASE}/api/orders/mine`);
       renderMyOrders(await res.json());
     }
 
-async function loadMyOrders() {
-  const res = await authFetch(`${window.API_BASE}/api/orders/mine`);
-  renderMyOrders(await res.json());
-}
+    async function updateOrderStatus(orderId, status) {
+      await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+      loadMyOrders();
+    }
 
-async function updateOrderStatus(orderId, status) {
-  await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status })
-  });
-  loadMyOrders();
-}
+    authFetch(`${window.API_BASE}/api/check-session`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        } else {
+          const driverInput = document.getElementById('driverId');
+          if (driverInput) driverInput.value = data.user.email;
+          loadMyOrders();
+        }
+      });
   </script>
 
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
