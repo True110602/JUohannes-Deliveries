@@ -1,39 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <script src="/js/geo-helpers.js"></script>
 
-    // 1. If no token in local storage, send back to login
-    if (!token) {
-      window.location.href = '/index.html'; // Change to your login page filename if different
-      return;
-    }
-
-    try {
-      // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.loggedIn) {
-        // Token expired or invalid -> Clear local storage & kick back
-        localStorage.removeItem('token');
-        window.location.href = '/index.html';
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-      // Fallback: stay on page if backend server is temporarily unreachable
-    }
-  })();
-</script>
   <meta charset="UTF-8">
   <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
@@ -41,13 +12,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Driver Portal</title>
 
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
-  <script src="/js/geo-helpers.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/css/theme.css" />
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <div class="fx-shell" style="max-width: 640px;">
+  <div class="fx-card">
+    <div class="fx-nav" style="margin-bottom:14px;">
+      <div class="fx-nav-title">
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
+        <div>
+          <span class="fx-pill">Driver</span>
+          <h2 style="margin:6px 0 0;">Navigation portal</h2>
+        </div>
+      </div>
+      <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
+    </div>
+
+    <div class="status-box" id="connectionStatus">Status: Offline</div>
+
+    <label>Driver ID / Name</label>
+    <input type="text" id="driverId" readonly>
+
+    <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
+
+    <label>Active Delivery</label>
+    <div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
+
+    <label>Live GPS Position</label>
+    <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
+  </div>
+  </div>
+
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
-    // These are declared at the top level (not nested inside the .then()
-    // below) so that the Logout button's onclick, the socket.io handler,
-    // and the map script further down the page can all actually see them.
+    // --- Everything below is defined at the top level (global scope) on
+    // purpose - onclick="..." attributes and socket.on(...) callbacks can
+    // only find functions that are actually global. A previous version of
+    // this file nested logoutDriver/renderMyOrders inside a .then()
+    // callback, which meant the Logout button silently failed (the
+    // function didn't exist where the browser was looking for it).
+
     function logoutDriver() {
       clearAuthToken();
       window.location.href = '/login.html';
@@ -85,7 +92,7 @@
     }
 
     async function loadMyOrders() {
-      const res = await authFetch(`${window.API_BASE}/api/orders/mine`);
+      const res = await authFetch(window.API_BASE + '/api/orders/mine');
       renderMyOrders(await res.json());
     }
 
@@ -97,6 +104,7 @@
       loadMyOrders();
     }
 
+    // --- Session check (runs once on load) ---
     authFetch(`${window.API_BASE}/api/check-session`)
       .then(res => res.json())
       .then(data => {
@@ -108,48 +116,13 @@
           loadMyOrders();
         }
       });
-  </script>
 
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <script src="/socket.io/socket.io.js"></script>
-  <link rel="stylesheet" href="/css/theme.css" />
-</head>
-<body>
-
-  <div class="fx-shell" style="max-width: 640px;">
-  <div class="fx-card">
-    <div class="fx-nav" style="margin-bottom:14px;">
-      <div class="fx-nav-title">
-        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
-        <div>
-          <span class="fx-pill">Driver</span>
-          <h2 style="margin:6px 0 0;">Navigation portal</h2>
-        </div>
-      </div>
-      <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
-    </div>
-
-    <div class="status-box" id="connectionStatus">Status: Offline</div>
-
-    <label>Driver ID / Name</label>
-    <input type="text" id="driverId" readonly>
-
-    <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
-
-    <label>Active Delivery</label>
-<div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
-
-    <label>Live GPS Position</label>
-    <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
-  </div>
-  </div>
-
-  <script src="/vendor/leaflet/leaflet.js"></script>
-  <script>
+    // --- Live map + GPS tracking ---
     const socket = io(window.API_BASE || undefined, {
       auth: { token: getAuthToken() }
     });
     socket.on('update_orders', renderMyOrders);
+
     const map = L.map('map').setView([-20.1350, 28.5800], 15);
     let marker = null;
 
