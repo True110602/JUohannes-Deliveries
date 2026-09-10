@@ -31,7 +31,7 @@ function optionalAuth(req, res, next) {
 
 router.post('/', optionalAuth, async (req, res) => {
   try {
-    const { customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, amount, lineItems } = req.body;
+    const { customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, amount, tip, lineItems } = req.body;
 
     if (!customerName || !pickup || !dropoff) {
       return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
@@ -40,8 +40,13 @@ router.post('/', optionalAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'EcoCash number is required for EcoCash payments' });
     }
 
+    // amount = item subtotal only. tip is kept separate so the platform's
+    // commission is always based on the subtotal, never on the driver's tip.
     const orderAmount = parseFloat(amount) || 0;
-    if (paymentMethod === 'EcoCash' && orderAmount <= 0) {
+    const tipAmount = Math.max(0, parseFloat(tip) || 0);
+    const grandTotal = orderAmount + tipAmount; // what the customer actually pays
+
+    if (paymentMethod === 'EcoCash' && grandTotal <= 0) {
       return res.status(400).json({ success: false, message: 'A valid amount is required for EcoCash payments' });
     }
 
@@ -53,9 +58,12 @@ router.post('/', optionalAuth, async (req, res) => {
       item: item || '',
       lineItems: Array.isArray(lineItems) ? lineItems : [],
       amount: orderAmount,
+      tip: tipAmount,
       paymentMethod: paymentMethod || 'Cash',
       ecocashNumber: ecocashNumber || null,
-      driverCommission: orderAmount * DRIVER_COMMISSION_RATE,
+      // Driver gets their normal commission on the subtotal, PLUS the
+      // entire tip - tips are never shared with the platform.
+      driverCommission: (orderAmount * DRIVER_COMMISSION_RATE) + tipAmount,
       platformCommission: orderAmount * PLATFORM_COMMISSION_RATE
     });
 
@@ -67,7 +75,7 @@ router.post('/', optionalAuth, async (req, res) => {
       } else {
         try {
           const payment = paynow.createPayment(`Order-${order._id}`, 'customer@example.com');
-          payment.add(item || 'Delivery order', orderAmount);
+          payment.add(item || 'Delivery order', grandTotal);
 
           const response = await paynow.sendMobile(payment, ecocashNumber, 'ecocash');
 
