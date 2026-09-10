@@ -40,7 +40,10 @@ const orderSchema = new mongoose.Schema({
   driverCommission: { type: Number, default: 0 },
   // New: what the platform itself keeps from this order (previously
   // undefined anywhere - only the driver's cut was ever calculated).
-  platformCommission: { type: Number, default: 0 }
+  platformCommission: { type: Number, default: 0 },
+  // Tip goes 100% to the driver, on top of their normal commission - the
+  // platform never takes a cut of tips.
+  tip: { type: Number, default: 0 }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
