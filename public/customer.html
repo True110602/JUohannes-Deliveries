@@ -97,9 +97,7 @@
 
       <label>Drop-off Coordinates (Click map below)</label>
       <input type="text" name="dropoff" required placeholder="Coordinates will appear here">
-
-      <label>Total Amount (USD)</label>
-      <input type="number" name="amount" id="amount" step="0.01" min="0.01" required placeholder="e.g. 5.00">
+      <input type="hidden" name="amount" id="amount" value="0">
 
       <label>Select Drop-off on Map</label>
       <button type="button" id="useMyLocationBtn" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
@@ -121,6 +119,21 @@
         <ul id="orderSummaryList"></ul>
       </div>
       <input type="hidden" name="item" id="itemField">
+
+      <label>Add a tip for your driver (optional)</label>
+      <input type="number" name="tip" id="tipInput" step="0.01" min="0" value="0" placeholder="0.00">
+      <div style="display:flex; gap:8px; margin:-8px 0 14px;">
+        <button type="button" class="fx-btn-muted tip-quick-btn" style="width:auto; padding:6px 12px; font-size:13px;" data-tip="0">No tip</button>
+        <button type="button" class="fx-btn-muted tip-quick-btn" style="width:auto; padding:6px 12px; font-size:13px;" data-tip="1">$1</button>
+        <button type="button" class="fx-btn-muted tip-quick-btn" style="width:auto; padding:6px 12px; font-size:13px;" data-tip="2">$2</button>
+        <button type="button" class="fx-btn-muted tip-quick-btn" style="width:auto; padding:6px 12px; font-size:13px;" data-tip="5">$5</button>
+      </div>
+
+      <div id="orderTotals" class="fx-card" style="padding:14px; margin-bottom:15px;">
+        <div style="display:flex; justify-content:space-between; font-size:14px;"><span>Subtotal</span><span id="totalSubtotal">$0.00</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-top:4px;"><span>Tip</span><span id="totalTip">$0.00</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:16px; font-weight:700; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);"><span>Total</span><span id="totalGrand">$0.00</span></div>
+      </div>
 
       <label>Payment Method</label>
       <select name="paymentMethod" id="paymentMethod" required>
@@ -203,6 +216,7 @@
       if (orderItems.length === 0) {
         box.style.display = 'none';
         itemField.value = '';
+        updateOrderTotals();
         return;
       }
 
@@ -223,7 +237,33 @@
       });
 
       itemField.value = summaryStrings.join('; ');
+      updateOrderTotals();
     }
+
+    // Computes subtotal from the selected items' actual prices, adds the
+    // tip on top, and fills the hidden "amount" field automatically - the
+    // customer no longer has to work out and type a total themselves.
+    function updateOrderTotals() {
+      const subtotal = orderItems.reduce((sum, entry) => sum + (parseFloat(entry.price) || 0), 0);
+      const tip = parseFloat(document.getElementById('tipInput').value) || 0;
+      const total = subtotal + tip;
+
+      document.getElementById('totalSubtotal').innerText = `$${subtotal.toFixed(2)}`;
+      document.getElementById('totalTip').innerText = `$${tip.toFixed(2)}`;
+      document.getElementById('totalGrand').innerText = `$${total.toFixed(2)}`;
+      // amount holds the subtotal only (not subtotal+tip) - tip is sent
+      // separately so the server can keep the platform's commission based
+      // only on the item subtotal, never taking a cut of the driver's tip.
+      document.getElementById('amount').value = subtotal.toFixed(2);
+    }
+
+    document.getElementById('tipInput').addEventListener('input', updateOrderTotals);
+    document.querySelectorAll('.tip-quick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('tipInput').value = btn.dataset.tip;
+        updateOrderTotals();
+      });
+    });
 
     function addToOrder(item) {
       const selections = {};
@@ -405,6 +445,12 @@
 
     document.getElementById('orderForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+
+      if (orderItems.length === 0) {
+        alert('Please add at least one item from the menu before requesting delivery.');
+        return;
+      }
+
       const formData = new FormData(e.target);
       const payload = {
         customerName: formData.get('customerName'),
@@ -413,6 +459,7 @@
         item: formData.get('item'),
         lineItems: buildLineItemsPayload(),
         amount: formData.get('amount'),
+        tip: formData.get('tip') || 0,
         paymentMethod: formData.get('paymentMethod'),
         ecocashNumber: formData.get('ecocashNumber') || null
       };
