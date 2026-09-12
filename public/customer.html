@@ -74,6 +74,7 @@
       <span class="fx-pill">Customer</span>
     </div>
     <button class="fx-btn-ghost" style="width:auto;" onclick="showOrderHistory()">My Orders</button>
+    <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
     <button class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
   </div>
 
@@ -435,11 +436,30 @@
               </div>
               <span class="fx-pill">${(order.status || 'pending').replace('_', ' ')}</span>
             </div>
+            ${order.status === 'pending' ? `<button class="fx-btn-danger" style="width:auto; margin-top:8px;" onclick="cancelMyOrder('${order._id}', this)">Cancel order</button>` : ''}
           `;
           list.appendChild(div);
         });
       } catch (err) {
         list.innerHTML = '<i class="fx-muted">Could not load your order history.</i>';
+      }
+    }
+
+    async function cancelMyOrder(orderId, button) {
+      if (!confirm('Cancel this order?')) return;
+      setButtonLoading(button, true, 'Cancelling...');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/cancel`, { method: 'PATCH' });
+        const data = await res.json();
+        if (data.success) {
+          loadOrderHistory();
+        } else {
+          setButtonLoading(button, false);
+          alert(data.message || 'Could not cancel this order.');
+        }
+      } catch (err) {
+        setButtonLoading(button, false);
+        alert('Server connection error.');
       }
     }
 
