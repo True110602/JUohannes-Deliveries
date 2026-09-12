@@ -31,6 +31,7 @@
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
   <style>
     .option-group-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
     .option-group-row input { margin: 0; }
@@ -408,6 +409,7 @@
     loadProfile().then(loadMyOrders);
     loadStats();
     loadMyCatalog();
+    initSupportWidget();
   </script>
 </body>
 </html>
