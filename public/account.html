@@ -25,6 +25,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Account - Johannes Deliveries</title>
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
 </head>
 <body>
 
@@ -78,6 +79,13 @@
       <p id="passwordStatus"></p>
     </div>
 
+    <div class="fx-card">
+      <div class="fx-eyebrow">Referral program</div>
+      <h3 style="margin-top:0;">Invite friends, earn credit</h3>
+      <p class="fx-muted" style="margin-top:0;">Share your code. When a friend signs up with it, they get 10% off their first order - and once that order is delivered, you get $2 in credit to use on your own next order.</p>
+      <div id="referralInfo"><span class="inline-spinner fx-spinner-light"></span>Loading...</div>
+    </div>
+
     <button class="fx-btn-danger" onclick="logoutAccount()">Logout</button>
   </div>
 
@@ -96,7 +104,35 @@
         console.error('Could not load account', err);
       }
     }
+    async function loadReferralInfo() {
+      const box = document.getElementById('referralInfo');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/account/referral`);
+        const data = await res.json();
+        if (!data.success) {
+          box.innerHTML = '<i class="fx-muted">Could not load your referral info.</i>';
+          return;
+        }
+        const link = `${window.location.origin}/register.html?ref=${data.referralCode}`;
+        box.innerHTML = `
+          <div class="fx-referral-code">${data.referralCode}</div>
+          <div>
+            <button type="button" class="fx-btn-muted" style="width:auto;" onclick="navigator.clipboard.writeText('${data.referralCode}').then(()=>showToast('Code copied!','success'))">Copy code</button>
+            <button type="button" class="fx-btn-muted" style="width:auto;" onclick="navigator.clipboard.writeText('${link}').then(()=>showToast('Link copied!','success'))">Copy invite link</button>
+          </div>
+          <div class="fx-referral-stats">
+            <div class="fx-referral-stat"><b>${data.referredCount}</b><span>Friends referred</span></div>
+            <div class="fx-referral-stat"><b>$${data.referralCredit.toFixed(2)}</b><span>Credit balance</span></div>
+          </div>
+        `;
+      } catch (err) {
+        box.innerHTML = '<i class="fx-muted">Could not load your referral info.</i>';
+      }
+    }
+
     loadAccount();
+    loadReferralInfo();
+    initSupportWidget();
 
     document.getElementById('profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
