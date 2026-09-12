@@ -18,6 +18,12 @@ const userSchema = new mongoose.Schema({
     accountName: { type: String, default: '' },
     accountNumber: { type: String, default: '' }
   },
+  // Merchant accounts start unapproved and can't list items publicly
+  // until an admin approves them - set explicitly to false at
+  // registration for the merchant role. Every other role defaults to
+  // true (approval doesn't apply to them) so nothing changes for
+  // existing customer/driver/admin accounts.
+  approved: { type: Boolean, default: true },
   resetCode: { type: String, default: null },
   resetCodeExpires: { type: Date, default: null }
 }, { timestamps: true });
