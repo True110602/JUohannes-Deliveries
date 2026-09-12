@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/config.js"></script>
+  <script src="/js/ui-helpers.js"></script>
+  <script>
+    authFetch(`${window.API_BASE}/api/check-session`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        }
+      });
+
+    function logoutAccount() {
+      clearAuthToken();
+      window.location.href = '/login.html';
+    }
+  </script>
+
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Account - Johannes Deliveries</title>
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+
+  <div class="fx-shell" style="max-width: 560px;">
+    <div class="fx-nav">
+      <div class="fx-nav-title">
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
+        <div>
+          <span class="fx-pill">My Account</span>
+          <h2 style="margin:6px 0 0;">Account settings</h2>
+        </div>
+      </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="history.back()">&larr; Back</button>
+    </div>
+
+    <div class="fx-card">
+      <div class="fx-eyebrow">Profile</div>
+      <h3 style="margin-top:0;">Your details</h3>
+
+      <form id="profileForm">
+        <label>Full Name</label>
+        <input type="text" id="accName" placeholder="Full name">
+
+        <label>Email</label>
+        <input type="text" id="accEmail" disabled>
+
+        <label>Phone Number</label>
+        <input type="tel" id="accPhone" placeholder="Phone number">
+
+        <label>Address</label>
+        <input type="text" id="accAddress" placeholder="Address">
+
+        <button type="submit" id="saveProfileBtn">Save changes</button>
+      </form>
+      <p id="profileStatus"></p>
+    </div>
+
+    <div class="fx-card">
+      <div class="fx-eyebrow">Security</div>
+      <h3 style="margin-top:0;">Change password</h3>
+
+      <form id="passwordForm">
+        <label>Current Password</label>
+        <input type="password" id="currentPassword" required>
+
+        <label>New Password</label>
+        <input type="password" id="newPassword" required minlength="6" placeholder="At least 6 characters">
+
+        <button type="submit" id="savePasswordBtn">Update password</button>
+      </form>
+      <p id="passwordStatus"></p>
+    </div>
+
+    <button class="fx-btn-danger" onclick="logoutAccount()">Logout</button>
+  </div>
+
+  <script>
+    async function loadAccount() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/account/me`);
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('accName').value = data.user.name || '';
+          document.getElementById('accEmail').value = data.user.email || '';
+          document.getElementById('accPhone').value = data.user.phone || '';
+          document.getElementById('accAddress').value = data.user.address || '';
+        }
+      } catch (err) {
+        console.error('Could not load account', err);
+      }
+    }
+    loadAccount();
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveProfileBtn');
+      const status = document.getElementById('profileStatus');
+      setButtonLoading(btn, true, 'Saving...');
+      status.innerText = '';
+
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/account/me`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: document.getElementById('accName').value,
+            phone: document.getElementById('accPhone').value,
+            address: document.getElementById('accAddress').value
+          })
+        });
+        const data = await res.json();
+        status.style.color = data.success ? '#4ade80' : '#ff5d7a';
+        status.innerText = data.success ? 'Saved!' : (data.message || 'Could not save changes.');
+      } catch (err) {
+        status.style.color = '#ff5d7a';
+        status.innerText = 'Server connection error.';
+      } finally {
+        setButtonLoading(btn, false);
+      }
+    });
+
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('savePasswordBtn');
+      const status = document.getElementById('passwordStatus');
+      setButtonLoading(btn, true, 'Updating...');
+      status.innerText = '';
+
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/account/password`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            currentPassword: document.getElementById('currentPassword').value,
+            newPassword: document.getElementById('newPassword').value
+          })
+        });
+        const data = await res.json();
+        status.style.color = data.success ? '#4ade80' : '#ff5d7a';
+        status.innerText = data.message || (data.success ? 'Password updated!' : 'Could not update password.');
+        if (data.success) {
+          document.getElementById('passwordForm').reset();
+        }
+      } catch (err) {
+        status.style.color = '#ff5d7a';
+        status.innerText = 'Server connection error.';
+      } finally {
+        setButtonLoading(btn, false);
+      }
+    });
+  </script>
+
+</body>
+</html>
