@@ -48,7 +48,19 @@ const orderSchema = new mongoose.Schema({
   platformCommission: { type: Number, default: 0 },
   // Tip goes 100% to the driver, on top of their normal commission - the
   // platform never takes a cut of tips.
-  tip: { type: Number, default: 0 }
+  tip: { type: Number, default: 0 },
+  // Referral program bookkeeping. discountApplied is the first-order
+  // percentage discount (see REFERRAL_DISCOUNT_RATE in routes/orders.js);
+  // creditApplied is any of the customer's own referral credit balance
+  // they chose to redeem against this order. Both are already subtracted
+  // out of `amount` by the time the order is saved - kept here separately
+  // just so the receipt/history can show where the total came from.
+  discountApplied: { type: Number, default: 0 },
+  creditApplied: { type: Number, default: 0 },
+  // Set once this order has triggered the referrer's reward, so a status
+  // flip back and forth (e.g. delivered -> cancelled -> delivered again,
+  // however unlikely) can never pay out twice for the same order.
+  referralRewardGranted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
