@@ -20,6 +20,7 @@ const catalogRoutes = require('./routes/catalog');
 const orderRoutes = require('./routes/orders');
 const merchantRoutes = require('./routes/merchant');
 const adminRoutes = require('./routes/admin');
+const accountRoutes = require('./routes/account');
 
 const app = express();
 const server = http.createServer(app);
@@ -244,7 +245,10 @@ app.post('/api/register', registerLimiter, async (req, res) => {
       password: hashedPassword,
       role: chosenRole,
       address: address || '',
-      paymentMethod: paymentMethod || 'Cash'
+      paymentMethod: paymentMethod || 'Cash',
+      // New merchants need admin approval before their storefront goes
+      // live - every other role is unaffected by this field.
+      approved: chosenRole !== 'merchant'
     });
 
     const token = jwt.sign({ id: newUser._id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -420,6 +424,7 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/merchant', merchantRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/account', accountRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
