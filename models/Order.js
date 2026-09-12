@@ -32,6 +32,11 @@ const orderSchema = new mongoose.Schema({
   amount: { type: Number, default: 0 },
   status: { type: String, enum: ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'], default: 'pending' },
   assignedDriver: { type: String, default: null },
+  // null = no response yet from the assigned driver, true = accepted,
+  // false = declined (in which case the order goes back to unassigned).
+  // Previously an assignment was just forced onto a driver with no way
+  // for them to signal they can't take it.
+  driverAccepted: { type: Boolean, default: null },
   paymentMethod: { type: String, default: 'Cash' },
   ecocashNumber: { type: String, default: null },
   paymentStatus: { type: String, default: 'n/a' },
