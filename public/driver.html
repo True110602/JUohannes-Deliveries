@@ -28,6 +28,7 @@
           <h2 style="margin:6px 0 0;">Navigation portal</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
     </div>
 
@@ -74,12 +75,25 @@
       for (let i = 0; i < mine.length; i++) {
         const o = mine[i];
         let btn = '';
-        if (o.status === 'assigned') {
+
+        if (o.status === 'assigned' && o.driverAccepted === null) {
+          // Fresh assignment, awaiting this driver's response.
+          btn = '<div style="display:flex; gap:8px; margin-top:8px;">'
+            + '<button style="background:#4ade80;" onclick="respondToOrder(\'' + o._id + '\', true)">Accept</button>'
+            + '<button class="fx-btn-danger" onclick="respondToOrder(\'' + o._id + '\', false)">Decline</button>'
+            + '</div>';
+        } else if (o.status === 'assigned' && o.driverAccepted === true) {
           btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'picked_up\')">Mark Picked Up</button>';
         } else if (o.status === 'picked_up') {
           btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'delivered\')">Mark Delivered</button>';
         }
+
+        const newBadge = (o.status === 'assigned' && o.driverAccepted === null)
+          ? '<span class="fx-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b;">New assignment</span>'
+          : '';
+
         html += '<div class="fx-card" style="margin-top:10px;">'
+          + newBadge
           + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
           + '<div>Pickup: ' + o.pickup + '</div>'
           + '<div>Dropoff: ' + o.dropoff + '</div>'
@@ -89,6 +103,14 @@
           + '</div>';
       }
       container.innerHTML = html;
+    }
+
+    async function respondToOrder(orderId, accepted) {
+      await authFetch(`${window.API_BASE}/api/orders/${orderId}/respond`, {
+        method: 'PATCH',
+        body: JSON.stringify({ accepted })
+      });
+      loadMyOrders();
     }
 
     async function loadMyOrders() {
