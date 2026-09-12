@@ -14,6 +14,7 @@
 
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -201,6 +202,8 @@
         }
       );
     }
+
+    initSupportWidget();
   </script>
 
 </body>
