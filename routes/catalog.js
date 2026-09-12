@@ -12,17 +12,21 @@ router.get('/shops', async (req, res) => {
     const merchantEmails = await CatalogItem.distinct('merchantEmail');
     if (!merchantEmails.length) return res.json([]);
 
-    const merchants = await User.find({ email: { $in: merchantEmails } })
+    // Only show shops belonging to approved merchants - a merchant who
+    // hasn't been approved yet shouldn't be visible to customers even if
+    // they've added items.
+    const merchants = await User.find({ email: { $in: merchantEmails }, approved: true })
       .select('email shopName profilePicUrl');
     const merchantByEmail = new Map(merchants.map(m => [m.email, m]));
+    const approvedEmails = merchants.map(m => m.email);
 
     const itemCounts = await CatalogItem.aggregate([
-      { $match: { merchantEmail: { $in: merchantEmails } } },
+      { $match: { merchantEmail: { $in: approvedEmails } } },
       { $group: { _id: '$merchantEmail', count: { $sum: 1 } } }
     ]);
     const countByEmail = new Map(itemCounts.map(c => [c._id, c.count]));
 
-    const shops = merchantEmails.map(email => {
+    const shops = approvedEmails.map(email => {
       const merchant = merchantByEmail.get(email);
       return {
         merchantEmail: email,
@@ -49,7 +53,15 @@ router.get('/', async (req, res) => {
       filter.merchantEmail = req.query.merchant;
     }
     const items = await CatalogItem.find(filter).sort({ createdAt: -1 });
-    res.json(items);
+
+    // Filter out any items belonging to a merchant who isn't approved yet
+    // (covers the case where an admin later un-approves someone, or a
+    // customer somehow reaches an unapproved shop's URL directly).
+    const emails = [...new Set(items.map(i => i.merchantEmail))];
+    const approvedMerchants = await User.find({ email: { $in: emails }, approved: true }).select('email');
+    const approvedSet = new Set(approvedMerchants.map(m => m.email));
+
+    res.json(items.filter(i => approvedSet.has(i.merchantEmail)));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -58,6 +70,9 @@ router.get('/', async (req, res) => {
 // POST new catalog item - merchant only, stamped with their own email
 router.post('/', ...requireRole('merchant'), async (req, res) => {
   try {
+    // Merchants can prepare their menu while awaiting approval - items
+    // just won't be visible to customers yet, since the GET routes above
+    // already filter out anything from an unapproved merchant.
     const { name, price, description, imageUrl, optionGroups } = req.body;
 
     const newItem = new CatalogItem({
