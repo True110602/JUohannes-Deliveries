@@ -52,6 +52,7 @@
           <h2 style="margin:6px 0 0;">Fleet & orders dashboard</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutAdmin()">Logout</button>
     </div>
 
@@ -84,6 +85,13 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="section fx-card" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Moderation</div>
+        <h3 style="margin-top:0;">Merchant approvals</h3>
+        <p class="fx-muted" style="margin-top:0;">New merchants can't list items publicly until approved here.</p>
+        <div id="merchantApprovalsList"><span class="inline-spinner fx-spinner-light"></span>Loading merchants...</div>
       </div>
 
     </div>
@@ -160,6 +168,13 @@
       }
     }
 
+    function driverResponseBadge(o) {
+      if (!o.assignedDriver) return '';
+      if (o.driverAccepted === true) return '<div class="fx-muted" style="font-size:11px; color:#4ade80;">Accepted</div>';
+      if (o.driverAccepted === false) return '<div class="fx-muted" style="font-size:11px; color:#ff5d7a;">Declined</div>';
+      return '<div class="fx-muted" style="font-size:11px; color:#f59e0b;">Awaiting response</div>';
+    }
+
     function renderOrders(orders) {
       const tbody = document.getElementById('ordersTableBody');
       if (!orders.length) {
@@ -173,7 +188,7 @@
           <td>${o.item || '<i>-</i>'}</td>
           <td>$${(o.amount || 0).toFixed(2)}</td>
           <td>${statusBadge(o.status)}</td>
-          <td>${o.assignedDriver || '<i>Unassigned</i>'}</td>
+          <td>${o.assignedDriver || '<i>Unassigned</i>'}${driverResponseBadge(o)}</td>
           <td>
             <select onchange="assignDriver('${o._id}', this)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
               <option value="">Assign driver...</option>
@@ -212,7 +227,47 @@
       }
     }
 
+    async function loadMerchantApprovals() {
+      const list = document.getElementById('merchantApprovalsList');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/admin/merchants`);
+        const merchants = await res.json();
+
+        if (!merchants.length) {
+          list.innerHTML = '<i class="fx-muted">No merchants registered yet.</i>';
+          return;
+        }
+
+        list.innerHTML = merchants.map(m => `
+          <div class="fx-card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <b>${m.shopName || m.email}</b>
+              <div class="fx-muted" style="font-size:12px;">${m.email}</div>
+            </div>
+            ${m.approved
+              ? '<span class="fx-pill" style="background:rgba(74,222,128,0.15); color:#4ade80;">Approved</span>'
+              : `<button style="width:auto;" onclick="approveMerchant('${m._id}', this)">Approve</button>`
+            }
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = '<i class="fx-muted">Could not load merchants.</i>';
+      }
+    }
+
+    async function approveMerchant(id, btn) {
+      setButtonLoading(btn, true, 'Approving...');
+      try {
+        await authFetch(`${window.API_BASE}/api/admin/merchants/${id}/approve`, { method: 'PATCH' });
+        loadMerchantApprovals();
+      } catch (err) {
+        setButtonLoading(btn, false);
+        alert('Could not approve merchant.');
+      }
+    }
+
     loadDrivers().then(loadOrders);
+    loadMerchantApprovals();
   </script>
 </body>
 </html>
