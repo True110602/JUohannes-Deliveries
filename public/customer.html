@@ -1,50 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
-
-    // 1. If no token in local storage, send back to login
-    if (!token) {
-      window.location.href = '/index.html'; // Change to your login page filename if different
-      return;
-    }
-
-    try {
-      // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.loggedIn) {
-        // Token expired or invalid -> Clear local storage & kick back
-        localStorage.removeItem('token');
-        window.location.href = '/index.html';
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-      // Fallback: stay on page if backend server is temporarily unreachable
-    }
-  })();
-</script>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
   <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
+    // Guest browsing: unlike before, having no token no longer bounces the
+    // visitor straight to login - shops and menus are public data (the
+    // backend routes always allowed this; only the frontend was gating
+    // it). window.isGuest just tracks whether we should hide
+    // account-only UI and require login at the "Place order" step instead.
+    window.isGuest = true;
+
+    const sessionCheck = (async function checkSession() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const res = await fetch(`${window.API_BASE || ''}/api/check-session`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (res.ok && data.loggedIn) {
+          window.isGuest = false;
+        } else {
+          localStorage.removeItem('token');
         }
-      });
+      } catch (err) {
+        console.error('Session validation error:', err);
+        // Fallback: treat as logged out only if we're sure the token is
+        // invalid - a temporary network error shouldn't log someone out.
+      }
+    })();
 
     function logoutCustomer() {
       clearAuthToken();
@@ -60,22 +47,30 @@
 
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
 
   <style>
     #ecocashField { display: none; }
+    #bankTransferField { display: none; }
   </style>
 </head>
 <body>
 
   <div class="fx-shell" style="max-width: 700px;">
+  <div id="guestBanner" class="fx-guest-banner" style="display:none;">
+    <span>Browsing as a guest - you can look through shops and menus freely. You'll need to sign in to place an order.</span>
+    <button type="button" class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/login.html'">Sign in</button>
+  </div>
   <div class="fx-nav">
     <div class="fx-nav-title">
       <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
       <span class="fx-pill">Customer</span>
     </div>
-    <button class="fx-btn-ghost" style="width:auto;" onclick="showOrderHistory()">My Orders</button>
-    <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
-    <button class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
+    <div id="dataSaverToggleContainer"></div>
+    <button id="navMyOrders" class="fx-btn-ghost" style="width:auto;" onclick="showOrderHistory()">My Orders</button>
+    <button id="navMyAccount" class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
+    <button id="navLogout" class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
+    <button id="navSignIn" class="fx-btn-ghost" style="width:auto; display:none;" onclick="window.location.href='/login.html'">Sign in</button>
   </div>
 
   <div class="fx-card" id="orderHistoryPanel" style="display:none;">
@@ -101,8 +96,18 @@
       <input type="hidden" name="amount" id="amount" value="0">
 
       <label>Select Drop-off on Map</label>
-      <button type="button" id="useMyLocationBtn" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
-      <div id="map" style="width:100%; height:300px; margin-top:10px; margin-bottom:15px;"></div>
+      <div id="mapModeContainer">
+        <button type="button" id="useMyLocationBtn" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
+        <div id="map" style="width:100%; height:300px; margin-top:10px; margin-bottom:15px;"></div>
+      </div>
+      <div id="manualCoordsContainer" style="display:none;">
+        <p class="fx-muted" style="margin-top:0; font-size:12.5px;">Data Saver is on, so the map is switched off to save mobile data. Enter your drop-off coordinates manually, or use your device's location.</p>
+        <button type="button" id="useMyLocationBtnManual" class="fx-btn-muted" style="margin-bottom: 10px;">Use My Location</button>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="manualLat" placeholder="Latitude" style="flex:1;">
+          <input type="text" id="manualLng" placeholder="Longitude" style="flex:1;">
+        </div>
+      </div>
 
       <h3>Shops</h3>
       <div id="shopSelectionView">
@@ -132,20 +137,35 @@
 
       <div id="orderTotals" class="fx-card" style="padding:14px; margin-bottom:15px;">
         <div style="display:flex; justify-content:space-between; font-size:14px;"><span>Subtotal</span><span id="totalSubtotal">$0.00</span></div>
+        <div id="discountRow" style="display:none; justify-content:space-between; font-size:14px; margin-top:4px; color:var(--accent-ok);"><span>First-order discount (10%)</span><span id="totalDiscount">-$0.00</span></div>
+        <div id="creditRow" style="display:none; justify-content:space-between; font-size:14px; margin-top:4px; color:var(--accent-ok);"><span>Credit applied</span><span id="totalCreditApplied">-$0.00</span></div>
         <div style="display:flex; justify-content:space-between; font-size:14px; margin-top:4px;"><span>Tip</span><span id="totalTip">$0.00</span></div>
         <div style="display:flex; justify-content:space-between; font-size:16px; font-weight:700; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);"><span>Total</span><span id="totalGrand">$0.00</span></div>
+      </div>
+
+      <div id="useCreditContainer" style="display:none; margin:-8px 0 14px;">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+          <input type="checkbox" id="useCreditCheckbox" style="width:auto;">
+          Use my referral credit (<span id="availableCreditAmount">$0.00</span> available) on this order
+        </label>
       </div>
 
       <label>Payment Method</label>
       <select name="paymentMethod" id="paymentMethod" required>
         <option value="Cash">Cash on Delivery</option>
         <option value="EcoCash">EcoCash</option>
-        <option value="Card">Credit/Debit Card</option>
+        <option value="OneMoney">OneMoney</option>
+        <option value="BankTransfer">Bank Transfer</option>
+        <option value="Card">Card (pay on delivery/collection)</option>
       </select>
 
       <div id="ecocashField">
         <label>EcoCash Number</label>
-        <input type="tel" name="ecocashNumber" id="ecocashNumber" placeholder="e.g. 0771234567">
+        <input type="tel" name="mobileNumber" id="ecocashNumber" placeholder="e.g. 0771234567">
+      </div>
+
+      <div id="bankTransferField" class="fx-alert fx-alert-warn" style="margin-top:10px; font-size:13px;">
+        You'll see the platform's bank details and your reference after you submit - an admin confirms the transfer manually before your order is prepared.
       </div>
 
       <button type="submit" style="margin-top: 20px;">Request Delivery & Pay</button>
@@ -157,55 +177,112 @@
   <script src="/vendor/leaflet/leaflet.js"></script>
 
   <script>
-    const map = L.map('map').setView([-20.1350, 28.5800], 15);
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
+    let map = null;
     let currentMarker = null;
 
-    map.on('click', function(e) {
-      const lat = e.latlng.lat;
-      const lng = e.latlng.lng;
-
-      if (currentMarker) {
-        map.removeLayer(currentMarker);
-      }
-
-      currentMarker = L.marker([lat, lng]).addTo(map)
-        .bindPopup(`<b>Selected Drop-off</b><br>Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`)
-        .openPopup();
-
+    function setDropoffValue(lat, lng) {
       const dropoffInput = document.querySelector('input[name="dropoff"]');
-      if (dropoffInput) {
-        dropoffInput.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      }
-    });
+      if (dropoffInput) dropoffInput.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
 
-    document.getElementById('useMyLocationBtn').addEventListener('click', async (e) => {
-      const btn = e.target;
-      setButtonLoading(btn, true, 'Locating...');
-      try {
-        const { lat, lng } = await getCurrentLocation();
-        map.setView([lat, lng], 16);
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        setButtonLoading(btn, false);
+    if (isDataSaverOn()) {
+      // Skip Leaflet + OpenStreetMap tile requests entirely - these are a
+      // real, recurring mobile-data cost, and a lat/lng pair is all the
+      // backend actually needs from this field.
+      document.getElementById('mapModeContainer').style.display = 'none';
+      document.getElementById('manualCoordsContainer').style.display = 'block';
+
+      function syncManualCoords() {
+        const lat = parseFloat(document.getElementById('manualLat').value);
+        const lng = parseFloat(document.getElementById('manualLng').value);
+        if (!isNaN(lat) && !isNaN(lng)) setDropoffValue(lat, lng);
       }
-    });
+      document.getElementById('manualLat').addEventListener('input', syncManualCoords);
+      document.getElementById('manualLng').addEventListener('input', syncManualCoords);
+
+      document.getElementById('useMyLocationBtnManual').addEventListener('click', async (e) => {
+        const btn = e.target;
+        setButtonLoading(btn, true, 'Locating...');
+        try {
+          const { lat, lng } = await getCurrentLocation();
+          document.getElementById('manualLat').value = lat.toFixed(6);
+          document.getElementById('manualLng').value = lng.toFixed(6);
+          setDropoffValue(lat, lng);
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          setButtonLoading(btn, false);
+        }
+      });
+    } else {
+      map = L.map('map').setView([-20.1350, 28.5800], 15);
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      map.on('click', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
+        if (currentMarker) {
+          map.removeLayer(currentMarker);
+        }
+
+        currentMarker = L.marker([lat, lng]).addTo(map)
+          .bindPopup(`<b>Selected Drop-off</b><br>Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`)
+          .openPopup();
+
+        setDropoffValue(lat, lng);
+      });
+
+      document.getElementById('useMyLocationBtn').addEventListener('click', async (e) => {
+        const btn = e.target;
+        setButtonLoading(btn, true, 'Locating...');
+        try {
+          const { lat, lng } = await getCurrentLocation();
+          map.setView([lat, lng], 16);
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          setButtonLoading(btn, false);
+        }
+      });
+    }
 
     const paymentSelect = document.getElementById('paymentMethod');
     const ecocashField = document.getElementById('ecocashField');
     const ecocashInput = document.getElementById('ecocashNumber');
+    const bankTransferField = document.getElementById('bankTransferField');
 
     paymentSelect.addEventListener('change', () => {
-      const isEcoCash = paymentSelect.value === 'EcoCash';
-      ecocashField.style.display = isEcoCash ? 'block' : 'none';
-      ecocashInput.required = isEcoCash;
+      const isMobileMoney = paymentSelect.value === 'EcoCash' || paymentSelect.value === 'OneMoney';
+      ecocashField.style.display = isMobileMoney ? 'block' : 'none';
+      ecocashInput.required = isMobileMoney;
+      bankTransferField.style.display = paymentSelect.value === 'BankTransfer' ? 'block' : 'none';
     });
+
+    // --- Referral credit / first-order discount preview ---
+    let availableCredit = 0;
+    async function loadCreditBalance() {
+      if (window.isGuest) return;
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/account/referral`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        firstOrderDiscountEligible = !!data.firstOrderDiscountEligible;
+
+        if (data.referralCredit > 0) {
+          availableCredit = data.referralCredit;
+          document.getElementById('availableCreditAmount').innerText = `$${availableCredit.toFixed(2)}`;
+          document.getElementById('useCreditContainer').style.display = 'block';
+        }
+        updateOrderTotals();
+      } catch (err) { /* credit display is a nice-to-have, fail silently */ }
+    }
+    document.getElementById('useCreditCheckbox').addEventListener('change', updateOrderTotals);
 
     let orderItems = [];
 
@@ -244,17 +321,37 @@
     // Computes subtotal from the selected items' actual prices, adds the
     // tip on top, and fills the hidden "amount" field automatically - the
     // customer no longer has to work out and type a total themselves.
+    // The discount/credit shown here are a preview only - the server
+    // recalculates and enforces both independently when the order is
+    // actually created.
+    let firstOrderDiscountEligible = false;
     function updateOrderTotals() {
       const subtotal = orderItems.reduce((sum, entry) => sum + (parseFloat(entry.price) || 0), 0);
       const tip = parseFloat(document.getElementById('tipInput').value) || 0;
-      const total = subtotal + tip;
+
+      const discount = firstOrderDiscountEligible ? Math.round(subtotal * 0.10 * 100) / 100 : 0;
+      const useCredit = document.getElementById('useCreditCheckbox').checked;
+      const creditApplied = useCredit ? Math.min(availableCredit, Math.max(0, subtotal - discount)) : 0;
+
+      const payableSubtotal = Math.max(0, subtotal - discount - creditApplied);
+      const total = payableSubtotal + tip;
 
       document.getElementById('totalSubtotal').innerText = `$${subtotal.toFixed(2)}`;
+
+      const discountRow = document.getElementById('discountRow');
+      discountRow.style.display = discount > 0 ? 'flex' : 'none';
+      document.getElementById('totalDiscount').innerText = `-$${discount.toFixed(2)}`;
+
+      const creditRow = document.getElementById('creditRow');
+      creditRow.style.display = creditApplied > 0 ? 'flex' : 'none';
+      document.getElementById('totalCreditApplied').innerText = `-$${creditApplied.toFixed(2)}`;
+
       document.getElementById('totalTip').innerText = `$${tip.toFixed(2)}`;
       document.getElementById('totalGrand').innerText = `$${total.toFixed(2)}`;
       // amount holds the subtotal only (not subtotal+tip) - tip is sent
       // separately so the server can keep the platform's commission based
       // only on the item subtotal, never taking a cut of the driver's tip.
+      // Discount/credit are applied server-side against this same figure.
       document.getElementById('amount').value = subtotal.toFixed(2);
     }
 
@@ -318,7 +415,7 @@
           const card = document.createElement('div');
           card.className = 'shop-card';
           card.innerHTML = `
-            ${shop.profilePicUrl ? `<img src="${shop.profilePicUrl}" alt="${shop.shopName}" onerror="this.style.display='none'">` : ''}
+            ${(shop.profilePicUrl && !isDataSaverOn()) ? `<img src="${shop.profilePicUrl}" alt="${shop.shopName}" onerror="this.style.display='none'">` : ''}
             <div class="shop-card-name">${shop.shopName}</div>
             <div class="shop-card-count">${shop.itemCount} item${shop.itemCount === 1 ? '' : 's'}</div>
           `;
@@ -368,7 +465,7 @@
           div.innerHTML = `
             <div class="catalog-item-top">
               <div style="display:flex; align-items:center; gap:10px;">
-                ${item.imageUrl ? `<img class="catalog-thumb" src="${item.imageUrl}" onerror="this.style.display='none'">` : ''}
+                ${(item.imageUrl && !isDataSaverOn()) ? `<img class="catalog-thumb" src="${item.imageUrl}" onerror="this.style.display='none'">` : ''}
                 <div>
                   <span><b>${item.name}</b> - $${item.price.toFixed(2)}</span>
                   ${item.description ? `<div class="catalog-desc">${item.description}</div>` : ''}
@@ -394,6 +491,20 @@
     }
 
     loadShops();
+    loadCreditBalance();
+    initSupportWidget();
+    renderDataSaverToggle('dataSaverToggleContainer', () => window.location.reload());
+
+    // Session check runs concurrently with the page's own setup above -
+    // once it resolves we know whether this is really a guest, and adjust
+    // the nav/banner accordingly. Browsing itself never waited on this.
+    sessionCheck.then(() => {
+      document.getElementById('navMyOrders').style.display = window.isGuest ? 'none' : '';
+      document.getElementById('navMyAccount').style.display = window.isGuest ? 'none' : '';
+      document.getElementById('navLogout').style.display = window.isGuest ? 'none' : '';
+      document.getElementById('navSignIn').style.display = window.isGuest ? '' : 'none';
+      document.getElementById('guestBanner').style.display = window.isGuest ? 'flex' : 'none';
+    });
 
     // --- Order history ---
     function showOrderHistory() {
@@ -466,6 +577,18 @@
     document.getElementById('orderForm').addEventListener('submit', async (e) => {
       e.preventDefault();
 
+      await sessionCheck; // make sure the guest/logged-in check has actually resolved before deciding
+      if (window.isGuest) {
+        // Browsing is public, but placing an order needs an account (so
+        // there's someone to notify, someone the order history belongs
+        // to, and someone eligible for the referral discount). Send them
+        // to sign in rather than letting the request fail server-side.
+        if (confirm('Please sign in to place an order. Go to the sign-in page now?')) {
+          window.location.href = '/login.html';
+        }
+        return;
+      }
+
       if (orderItems.length === 0) {
         alert('Please add at least one item from the menu before requesting delivery.');
         return;
@@ -481,7 +604,8 @@
         amount: formData.get('amount'),
         tip: formData.get('tip') || 0,
         paymentMethod: formData.get('paymentMethod'),
-        ecocashNumber: formData.get('ecocashNumber') || null
+        mobileNumber: formData.get('mobileNumber') || null,
+        useCredit: document.getElementById('useCreditCheckbox').checked
       };
 
       const statusBox = document.getElementById('paymentStatusBox');
@@ -498,12 +622,13 @@
 
         if (data.success) {
           const order = data.order;
+          const isMobileMoney = payload.paymentMethod === 'EcoCash' || payload.paymentMethod === 'OneMoney';
 
-          if (payload.paymentMethod === 'EcoCash') {
+          if (isMobileMoney) {
             if (order.paymentStatus === 'not_configured') {
               statusBox.style.display = 'block';
               statusBox.className = 'fx-alert fx-alert-danger';
-              statusBox.innerText = 'Order recorded, but EcoCash payment processing is not set up yet - no payment request was sent.';
+              statusBox.innerText = `Order recorded, but ${payload.paymentMethod} payment processing is not set up yet - no payment request was sent.`;
             } else if (order.paymentStatus === 'failed') {
               statusBox.style.display = 'block';
               statusBox.className = 'fx-alert fx-alert-danger';
@@ -513,7 +638,7 @@
               statusBox.className = 'fx-alert fx-alert-warn';
               statusBox.innerText = order.paynowInstructions
                 ? `Check your phone: ${order.paynowInstructions}`
-                : `A payment request was sent to ${payload.ecocashNumber}. Please confirm on your phone.`;
+                : `A payment request was sent to ${payload.mobileNumber}. Please confirm on your phone.`;
 
               let attempts = 0;
               const poll = setInterval(async () => {
@@ -534,6 +659,10 @@
                 if (attempts >= 24) clearInterval(poll);
               }, 5000);
             }
+          } else if (payload.paymentMethod === 'BankTransfer') {
+            statusBox.style.display = 'block';
+            statusBox.className = 'fx-alert fx-alert-warn';
+            statusBox.innerText = order.paynowInstructions || 'Order recorded - please complete your bank transfer.';
           } else {
             statusBox.style.display = 'block';
             statusBox.className = 'fx-alert fx-alert-ok';
@@ -542,8 +671,10 @@
 
           e.target.reset();
           ecocashField.style.display = 'none';
+          bankTransferField.style.display = 'none';
           orderItems = [];
           renderOrderSummary();
+          loadCreditBalance(); // refresh balance/eligibility after this order used some of it
         } else {
           alert(data.message || 'Could not submit your order.');
         }
