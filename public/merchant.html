@@ -48,7 +48,13 @@
           <h2 style="margin:6px 0 0;">Storefront dashboard</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutMerchant()">Logout</button>
+    </div>
+
+    <div id="approvalBanner" class="fx-card" style="display:none; background:rgba(245,158,11,0.1); border-color:rgba(245,158,11,0.3); margin-bottom:16px;">
+      <b style="color:#f59e0b;">Pending approval</b>
+      <p style="margin:4px 0 0;">Your merchant account is awaiting admin approval. You can set up your storefront and menu now, but items won't appear to customers until you're approved.</p>
     </div>
 
     <div class="dashboard-grid">
@@ -239,6 +245,9 @@
             const preview = document.getElementById('profilePicPreview');
             preview.src = p.profilePicUrl;
             preview.classList.add('fx-has-image');
+          }
+          if (!p.approved) {
+            document.getElementById('approvalBanner').style.display = 'block';
           }
         }
       } catch (err) {
