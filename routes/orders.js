@@ -152,6 +152,68 @@ router.patch('/:id/assign', ...requireRole('admin'), async (req, res) => {
 
     order.assignedDriver = driverEmail;
     order.status = 'assigned';
+    order.driverAccepted = null; // fresh assignment always needs a fresh response
+    await order.save();
+
+    const io = req.app.get('io');
+    const allOrders = await Order.find().sort({ createdAt: -1 });
+    io.emit('update_orders', allOrders);
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Driver accepts or declines an assignment. Declining puts the order back
+// to unassigned so admin can hand it to someone else - previously an
+// assignment was just forced onto a driver with no way to signal they
+// can't take it.
+router.patch('/:id/respond', ...requireRole('driver'), async (req, res) => {
+  try {
+    const { accepted } = req.body;
+    if (typeof accepted !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'accepted (true/false) is required' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.assignedDriver !== req.user.email) {
+      return res.status(403).json({ success: false, message: 'This order is not assigned to you.' });
+    }
+
+    order.driverAccepted = accepted;
+    if (!accepted) {
+      // Declined - free it up for reassignment rather than leaving it
+      // stuck on a driver who can't take it.
+      order.assignedDriver = null;
+      order.status = 'pending';
+    }
+    await order.save();
+
+    const io = req.app.get('io');
+    const allOrders = await Order.find().sort({ createdAt: -1 });
+    io.emit('update_orders', allOrders);
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Customer cancels their own order - only allowed while it's still
+// pending (i.e. before a driver has been assigned). Once a driver is
+// involved, cancelling needs admin's attention instead.
+router.patch('/:id/cancel', authenticateToken, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.customerEmail !== req.user.email) {
+      return res.status(403).json({ success: false, message: 'You can only cancel your own orders.' });
+    }
+    if (order.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'This order has already been assigned and can no longer be self-cancelled - please contact support.' });
+    }
+
+    order.status = 'cancelled';
     await order.save();
 
     const io = req.app.get('io');
