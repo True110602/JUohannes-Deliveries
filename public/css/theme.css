@@ -4,7 +4,8 @@
    so each page's markup can opt in without a rewrite.
    ========================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
+/* Google Fonts import moved to fonts.css, loaded conditionally per-page -
+   see that file's header comment for why. */
 
 :root{
   --bg-0:#05070d;
@@ -400,3 +401,51 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
   body{ padding: 14px; }
   .fx-card{ padding: 20px; }
 }
+
+/* ---------- guest browsing banner (customer.html) ---------- */
+.fx-guest-banner{
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 16px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: rgba(139,123,255,0.08);
+  font-size: 13.5px;
+}
+
+/* ---------- data saver toggle ---------- */
+.fx-data-saver-toggle{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-1); }
+.fx-switch{ position: relative; display: inline-block; width: 38px; height: 21px; flex: none; }
+.fx-switch input{ opacity: 0; width: 0; height: 0; }
+.fx-switch-track{
+  position: absolute; cursor: pointer; inset: 0;
+  background: rgba(120,170,255,0.18); border: 1px solid var(--border-strong);
+  border-radius: 999px; transition: background .15s ease;
+}
+.fx-switch-track::before{
+  content: ""; position: absolute; height: 15px; width: 15px; left: 2px; top: 2px;
+  background: var(--text-1); border-radius: 50%; transition: transform .15s ease, background .15s ease;
+}
+.fx-switch input:checked + .fx-switch-track{ background: rgba(94,234,212,0.35); }
+.fx-switch input:checked + .fx-switch-track::before{ transform: translateX(17px); background: var(--accent); }
+.fx-img-placeholder{
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(120,140,180,0.08); border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text-2); font-size: 10.5px; text-align: center;
+}
+
+/* ---------- support / report-an-issue widget ---------- */
+.fx-support-fab{
+  position: fixed; right: 18px; bottom: 18px; z-index: 900;
+  width: auto; border-radius: 999px; padding: 12px 18px;
+  box-shadow: var(--shadow-glow);
+}
+.fx-support-status{ font-size: 13px; margin-top: 8px; }
+
+/* ---------- referral card ---------- */
+.fx-referral-code{
+  font-size: 22px; font-weight: 700; letter-spacing: 2px;
+  padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  display: inline-block; margin: 8px 0;
+}
+.fx-referral-stats{ display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+.fx-referral-stat b{ display: block; font-size: 20px; }
+.fx-referral-stat span{ font-size: 11.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
