@@ -23,24 +23,39 @@
   })();
   </script>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Merchant Dashboard</title>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <style>
+    .option-group-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .option-group-row input { margin: 0; }
+    .option-group-row button { width: auto; margin: 0; padding: 8px 12px; background: rgba(255,93,122,0.15); color: #ff5d7a; box-shadow: none; }
+  </style>
 </head>
 <body>
 
   <div class="fx-shell" style="max-width: 1000px;">
     <div class="fx-nav">
       <div class="fx-nav-title">
-        <div class="fx-logo-mark">JD</div>
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
         <div>
           <span class="fx-pill">Merchant</span>
           <h2 style="margin:6px 0 0;">Storefront dashboard</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutMerchant()">Logout</button>
+    </div>
+
+    <div id="approvalBanner" class="fx-card" style="display:none; background:rgba(245,158,11,0.1); border-color:rgba(245,158,11,0.3); margin-bottom:16px;">
+      <b style="color:#f59e0b;">Pending approval</b>
+      <p style="margin:4px 0 0;">Your merchant account is awaiting admin approval. You can set up your storefront and menu now, but items won't appear to customers until you're approved.</p>
     </div>
 
     <div class="dashboard-grid">
@@ -65,8 +80,16 @@
         <div class="fx-eyebrow">Payouts</div>
         <h3 style="margin-top:0;">Profile & bank details</h3>
         <form id="profileForm">
-          <label>Profile picture URL</label>
-          <input type="text" id="profilePicUrl" placeholder="https://...">
+          <label>Shop name</label>
+          <input type="text" id="shopName" placeholder="e.g. Bhekinkosi's Fast Food">
+
+          <label>Profile picture</label>
+          <div class="fx-drop-zone" id="profilePicDropZone">
+            <img id="profilePicPreview" class="fx-drop-preview" alt="Profile preview">
+            <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here</div>
+            <input type="file" id="profilePicFile" accept="image/*">
+          </div>
+          <input type="hidden" id="profilePicUrl">
 
           <label>Bank name</label>
           <input type="text" id="bankName" placeholder="e.g. CBZ Bank">
@@ -95,8 +118,19 @@
           <label>Description</label>
           <input type="text" id="itemDescription" placeholder="Short description (optional)">
 
-          <label>Image URL</label>
-          <input type="text" id="itemImageUrl" placeholder="https://... (optional)">
+          <label>Item picture</label>
+          <div class="fx-drop-zone" id="itemPicDropZone">
+            <img id="itemPicPreview" class="fx-drop-preview" alt="Item preview">
+            <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here (optional)</div>
+            <input type="file" id="itemPicFile" accept="image/*">
+          </div>
+          <input type="hidden" id="itemImageUrl">
+
+          <label>Options (sauces, sides, colour, size - anything customers should choose from)</label>
+          <div id="optionGroupsBuilder" class="fx-drop-zone" style="cursor:default; padding:14px;">
+            <div id="optionGroupsList"></div>
+            <button type="button" id="addOptionGroupBtn" class="fx-btn-muted" style="margin-top:4px;">+ Add option (e.g. Sauce, Colour, Size)</button>
+          </div>
 
           <button type="submit" style="margin-top:14px;">Add item</button>
         </form>
@@ -108,6 +142,12 @@
         <div id="myCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading your catalog...</div>
       </div>
 
+      <div class="section fx-card" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Orders</div>
+        <h3 style="margin-top:0;">Incoming orders</h3>
+        <div id="myOrdersList"><span class="inline-spinner fx-spinner-light"></span>Loading orders...</div>
+      </div>
+
     </div>
   </div>
 
@@ -117,16 +157,99 @@
       window.location.href = '/login.html';
     }
 
+    // --- Option group builder ---
+    // Each row lets the merchant name a group (e.g. "Sauce") and list its
+    // choices comma-separated (e.g. "BBQ, Peri-Peri, None"). Fully generic
+    // so it works for food (sauces, sides) or anything else (colour, size).
+    function addOptionGroupRow() {
+      const list = document.getElementById('optionGroupsList');
+      const row = document.createElement('div');
+      row.className = 'option-group-row';
+      row.innerHTML = `
+        <input type="text" class="group-name" placeholder="Option name, e.g. Sauce">
+        <input type="text" class="group-choices" placeholder="Choices, comma separated, e.g. BBQ, Peri-Peri, None">
+        <button type="button" onclick="this.parentElement.remove()">Remove</button>
+      `;
+      list.appendChild(row);
+    }
+
+    function collectOptionGroups() {
+      const rows = document.querySelectorAll('#optionGroupsList .option-group-row');
+      const groups = [];
+      rows.forEach(row => {
+        const groupName = row.querySelector('.group-name').value.trim();
+        const choicesRaw = row.querySelector('.group-choices').value.trim();
+        if (groupName && choicesRaw) {
+          const choices = choicesRaw.split(',').map(c => c.trim()).filter(Boolean);
+          if (choices.length > 0) groups.push({ groupName, choices });
+        }
+      });
+      return groups;
+    }
+
+    document.getElementById('addOptionGroupBtn').addEventListener('click', addOptionGroupRow);
+
+    // --- Incoming orders ---
+    // Uses the structured lineItems recorded on each order to reliably
+    // find orders containing this merchant's items.
+    async function loadMyOrders() {
+      const list = document.getElementById('myOrdersList');
+      list.innerHTML = '<span class="inline-spinner fx-spinner-light"></span>Loading orders...';
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/merchant/orders`);
+        const orders = await res.json();
+
+        if (!Array.isArray(orders) || orders.length === 0) {
+          list.innerHTML = '<i class="fx-muted">No orders yet. Orders placed after your items were added will show up here.</i>';
+          return;
+        }
+
+        list.innerHTML = '';
+        orders.forEach(order => {
+          const myLines = (order.lineItems || []).filter(li => li.merchantEmail === currentMerchantEmail);
+          const itemsText = myLines.length ? myLines.map(li => li.name).join(', ') : (order.item || 'N/A');
+          const when = new Date(order.createdAt).toLocaleString();
+
+          const div = document.createElement('div');
+          div.className = 'catalog-item';
+          div.innerHTML = `
+            <div class="catalog-item-top">
+              <div>
+                <b>${itemsText}</b>
+                <div class="catalog-desc">${when} &middot; ${order.customerName}</div>
+              </div>
+              <span class="fx-pill">${(order.status || 'pending').replace('_', ' ')}</span>
+            </div>
+          `;
+          list.appendChild(div);
+        });
+      } catch (err) {
+        list.innerHTML = '<i class="fx-muted">Could not load orders.</i>';
+      }
+    }
+
+    let currentMerchantEmail = null;
+
     async function loadProfile() {
       try {
         const res = await authFetch(`${window.API_BASE}/api/merchant/profile`);
         const data = await res.json();
         if (data.success) {
           const p = data.profile;
+          currentMerchantEmail = p.email;
+          document.getElementById('shopName').value = p.shopName || '';
           document.getElementById('profilePicUrl').value = p.profilePicUrl || '';
           document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
           document.getElementById('accountName').value = (p.bankDetails && p.bankDetails.accountName) || '';
           document.getElementById('accountNumber').value = (p.bankDetails && p.bankDetails.accountNumber) || '';
+          if (p.profilePicUrl) {
+            const preview = document.getElementById('profilePicPreview');
+            preview.src = p.profilePicUrl;
+            preview.classList.add('fx-has-image');
+          }
+          if (!p.approved) {
+            document.getElementById('approvalBanner').style.display = 'block';
+          }
         }
       } catch (err) {
         console.error('Could not load profile', err);
@@ -208,6 +331,7 @@
         const res = await authFetch(`${window.API_BASE}/api/merchant/profile`, {
           method: 'PATCH',
           body: JSON.stringify({
+            shopName: document.getElementById('shopName').value,
             profilePicUrl: document.getElementById('profilePicUrl').value,
             bankName: document.getElementById('bankName').value,
             accountName: document.getElementById('accountName').value,
@@ -239,7 +363,8 @@
             name: document.getElementById('itemName').value,
             price: parseFloat(document.getElementById('itemPrice').value) || 0,
             description: document.getElementById('itemDescription').value,
-            imageUrl: document.getElementById('itemImageUrl').value
+            imageUrl: document.getElementById('itemImageUrl').value,
+            optionGroups: collectOptionGroups()
           })
         });
 
@@ -248,6 +373,11 @@
           statusEl.style.color = '#4ade80';
           statusEl.innerText = 'Item added!';
           e.target.reset();
+          document.getElementById('itemImageUrl').value = '';
+          document.getElementById('optionGroupsList').innerHTML = '';
+          const itemPreview = document.getElementById('itemPicPreview');
+          itemPreview.src = '';
+          itemPreview.classList.remove('fx-has-image');
           loadMyCatalog();
         } else {
           const data = await res.json().catch(() => ({}));
@@ -262,9 +392,24 @@
       }
     });
 
-    loadProfile();
+    setupImageDropZone({
+      dropZoneId: 'profilePicDropZone',
+      fileInputId: 'profilePicFile',
+      previewImgId: 'profilePicPreview',
+      hiddenUrlInputId: 'profilePicUrl'
+    });
+
+    setupImageDropZone({
+      dropZoneId: 'itemPicDropZone',
+      fileInputId: 'itemPicFile',
+      previewImgId: 'itemPicPreview',
+      hiddenUrlInputId: 'itemImageUrl'
+    });
+
+    loadProfile().then(loadMyOrders);
     loadStats();
     loadMyCatalog();
+    initSupportWidget();
   </script>
 </body>
 </html>

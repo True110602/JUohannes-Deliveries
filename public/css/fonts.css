@@ -1,0 +1,6 @@
+/* Split out of theme.css so pages can skip loading these (real, ongoing)
+   external font requests when the visitor has turned on Data Saver mode -
+   see the inline loader script each page's <head> and
+   ui-helpers.js:isDataSaverOn(). theme.css's font-family already lists
+   system-font fallbacks, so the app still looks fine without this file. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');

@@ -3,7 +3,6 @@
 <head>
 <script src="/js/config.js"></script>
 <script src="/js/ui-helpers.js"></script>
-<<<<<<< HEAD
 <script>
   (async function verifyAuth() {
     const token = localStorage.getItem('token');
@@ -32,36 +31,29 @@
     window.location.href = '/login.html';
   }
 </script>
-
-  <script>
-    fetch(`${API_BASE}/api/check-session`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        }
-      });
-  </script>
-918a5da9c6707dcdacceb420e886496643290526
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Johannes Deliveries - Admin Dashboard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <script src="/socket.io/socket.io.js"></script>
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
 </head>
 <body>
-<<<<<<< HEAD
 
   <div class="fx-shell" style="max-width: 1200px;">
     <div class="fx-nav">
       <div class="fx-nav-title">
-        <div class="fx-logo-mark">JD</div>
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
         <div>
           <span class="fx-pill">Admin</span>
           <h2 style="margin:6px 0 0;">Fleet & orders dashboard</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutAdmin()">Logout</button>
     </div>
 
@@ -96,16 +88,48 @@
         </div>
       </div>
 
+      <div class="section fx-card" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Moderation</div>
+        <h3 style="margin-top:0;">Merchant approvals</h3>
+        <p class="fx-muted" style="margin-top:0;">New merchants can't list items publicly until approved here.</p>
+        <div id="merchantApprovalsList"><span class="inline-spinner fx-spinner-light"></span>Loading merchants...</div>
+      </div>
+
+      <div class="section fx-card" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Support</div>
+        <h3 style="margin-top:0;">Support tickets</h3>
+        <p class="fx-muted" style="margin-top:0;">Reports submitted from the "Report an issue" button on customer/driver/merchant pages.</p>
+        <select id="supportStatusFilter" style="width:auto; padding:6px 10px; margin-bottom:10px;" onchange="loadSupportTickets()">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In progress</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <div class="fx-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>Subject</th>
+                <th>Message</th>
+                <th>Status</th>
+                <th>Reported</th>
+              </tr>
+            </thead>
+            <tbody id="supportTicketsBody">
+              <tr><td colspan="5" class="fx-muted">Loading tickets...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
     const map = L.map('map').setView([-20.1350, 28.5800], 13);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    addConfiguredTileLayer(map);
 
     const driverMarkers = {};
 
@@ -170,6 +194,13 @@
       }
     }
 
+    function driverResponseBadge(o) {
+      if (!o.assignedDriver) return '';
+      if (o.driverAccepted === true) return '<div class="fx-muted" style="font-size:11px; color:#4ade80;">Accepted</div>';
+      if (o.driverAccepted === false) return '<div class="fx-muted" style="font-size:11px; color:#ff5d7a;">Declined</div>';
+      return '<div class="fx-muted" style="font-size:11px; color:#f59e0b;">Awaiting response</div>';
+    }
+
     function renderOrders(orders) {
       const tbody = document.getElementById('ordersTableBody');
       if (!orders.length) {
@@ -183,7 +214,7 @@
           <td>${o.item || '<i>-</i>'}</td>
           <td>$${(o.amount || 0).toFixed(2)}</td>
           <td>${statusBadge(o.status)}</td>
-          <td>${o.assignedDriver || '<i>Unassigned</i>'}</td>
+          <td>${o.assignedDriver || '<i>Unassigned</i>'}${driverResponseBadge(o)}</td>
           <td>
             <select onchange="assignDriver('${o._id}', this)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
               <option value="">Assign driver...</option>
@@ -198,20 +229,123 @@
       `).join('');
     }
 
+    // Previously this list was built only from orders that already had a
+    // driver assigned - meaning there was no way to assign a driver for
+    // the very first time (empty dropdown, nothing to pick). It now comes
+    // from the actual registered drivers.
+    async function loadDrivers() {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/admin/drivers`);
+        driverListCache = await res.json();
+      } catch (err) {
+        console.error('Could not load driver list', err);
+        driverListCache = [];
+      }
+    }
+
     async function loadOrders() {
       try {
         const res = await authFetch(`${window.API_BASE}/api/orders`);
         const orders = await res.json();
-        driverListCache = [...new Set(orders.filter(o => o.assignedDriver).map(o => o.assignedDriver))];
         renderOrders(orders);
       } catch (err) {
         document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="6" class="fx-muted">Could not load orders.</td></tr>';
       }
     }
 
-    loadOrders();
+    async function loadMerchantApprovals() {
+      const list = document.getElementById('merchantApprovalsList');
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/admin/merchants`);
+        const merchants = await res.json();
+
+        if (!merchants.length) {
+          list.innerHTML = '<i class="fx-muted">No merchants registered yet.</i>';
+          return;
+        }
+
+        list.innerHTML = merchants.map(m => `
+          <div class="fx-card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <b>${m.shopName || m.email}</b>
+              <div class="fx-muted" style="font-size:12px;">${m.email}</div>
+            </div>
+            ${m.approved
+              ? '<span class="fx-pill" style="background:rgba(74,222,128,0.15); color:#4ade80;">Approved</span>'
+              : `<button style="width:auto;" onclick="approveMerchant('${m._id}', this)">Approve</button>`
+            }
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = '<i class="fx-muted">Could not load merchants.</i>';
+      }
+    }
+
+    async function approveMerchant(id, btn) {
+      setButtonLoading(btn, true, 'Approving...');
+      try {
+        await authFetch(`${window.API_BASE}/api/admin/merchants/${id}/approve`, { method: 'PATCH' });
+        loadMerchantApprovals();
+      } catch (err) {
+        setButtonLoading(btn, false);
+        alert('Could not approve merchant.');
+      }
+    }
+
+    // ---- Support tickets ----
+    function ticketStatusOptions(current) {
+      return ['open', 'in_progress', 'resolved']
+        .map(s => `<option value="${s}" ${current === s ? 'selected' : ''}>${s.replace('_', ' ')}</option>`)
+        .join('');
+    }
+
+    async function loadSupportTickets() {
+      const body = document.getElementById('supportTicketsBody');
+      const status = document.getElementById('supportStatusFilter').value;
+      try {
+        const qs = status ? `?status=${status}` : '';
+        const res = await authFetch(`${window.API_BASE}/api/support${qs}`);
+        const tickets = await res.json();
+
+        if (!tickets.length) {
+          body.innerHTML = '<tr><td colspan="5" class="fx-muted">No tickets here.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = tickets.map(t => `
+          <tr>
+            <td>${escapeHtml(t.name) || '<i>Guest</i>'}<div class="fx-muted" style="font-size:11px;">${escapeHtml(t.role)}${t.email ? ' &middot; ' + escapeHtml(t.email) : ''}</div></td>
+            <td>${escapeHtml(t.subject)}</td>
+            <td style="max-width:280px; white-space:normal;">${escapeHtml(t.message)}</td>
+            <td>
+              <select onchange="updateTicketStatus('${t._id}', this.value)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
+                ${ticketStatusOptions(t.status)}
+              </select>
+            </td>
+            <td class="fx-muted" style="font-size:12px;">${new Date(t.createdAt).toLocaleString()}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        body.innerHTML = '<tr><td colspan="5" class="fx-muted">Could not load tickets.</td></tr>';
+      }
+    }
+
+    async function updateTicketStatus(id, status) {
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/support/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        });
+        const data = await res.json();
+        if (!data.success) showToast(data.message || 'Could not update ticket.', 'error');
+      } catch (err) {
+        showToast('Server error updating ticket.', 'error');
+      }
+    }
+
+    loadDrivers().then(loadOrders);
+    loadMerchantApprovals();
+    loadSupportTickets();
   </script>
 </body>
 </html>
-=======
->>>>>>> 918a5da9c6707dcdacceb420e886496643290526

@@ -1,67 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
-
-    // 1. If no token in local storage, send back to login
-    if (!token) {
-      window.location.href = '/index.html'; // Change to your login page filename if different
-      return;
-    }
-
-    try {
-      // 2. Validate token against server endpoint
-      const res = await fetch('/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.loggedIn) {
-        // Token expired or invalid -> Clear local storage & kick back
-        localStorage.removeItem('token');
-        window.location.href = '/index.html';
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-      // Fallback: stay on page if backend server is temporarily unreachable
-    }
-  })();
-</script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Johannes Deliveries - Driver Portal</title>
-
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
-  <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        } else {
-          const driverInput = document.getElementById('driverId');
-          if (driverInput) driverInput.value = data.user.email;
-        }
-      });
 
-    function logoutDriver() {
-      clearAuthToken();
-      window.location.href = '/login.html';
-    }
-  </script>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Johannes Deliveries - Driver Portal</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
@@ -69,12 +23,13 @@
   <div class="fx-card">
     <div class="fx-nav" style="margin-bottom:14px;">
       <div class="fx-nav-title">
-        <div class="fx-logo-mark" style="width:32px;height:32px;font-size:14px;">JD</div>
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
         <div>
           <span class="fx-pill">Driver</span>
           <h2 style="margin:6px 0 0;">Navigation portal</h2>
         </div>
       </div>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
     </div>
 
@@ -85,23 +40,116 @@
 
     <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
 
+    <label>Active Delivery</label>
+    <div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
+
     <label>Live GPS Position</label>
     <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
   </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
+    // --- Everything below is defined at the top level (global scope) on
+    // purpose - onclick="..." attributes and socket.on(...) callbacks can
+    // only find functions that are actually global. A previous version of
+    // this file nested logoutDriver/renderMyOrders inside a .then()
+    // callback, which meant the Logout button silently failed (the
+    // function didn't exist where the browser was looking for it).
+
+    function logoutDriver() {
+      clearAuthToken();
+      window.location.href = '/login.html';
+    }
+
+    function renderMyOrders(orders) {
+      const myEmail = document.getElementById('driverId').value;
+      const mine = orders.filter(function(o) {
+        return o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled';
+      });
+      const container = document.getElementById('ordersList');
+      if (!mine.length) {
+        container.innerHTML = 'No orders assigned yet.';
+        return;
+      }
+      let html = '';
+      for (let i = 0; i < mine.length; i++) {
+        const o = mine[i];
+        let btn = '';
+
+        if (o.status === 'assigned' && o.driverAccepted === null) {
+          // Fresh assignment, awaiting this driver's response.
+          btn = '<div style="display:flex; gap:8px; margin-top:8px;">'
+            + '<button style="background:#4ade80;" onclick="respondToOrder(\'' + o._id + '\', true)">Accept</button>'
+            + '<button class="fx-btn-danger" onclick="respondToOrder(\'' + o._id + '\', false)">Decline</button>'
+            + '</div>';
+        } else if (o.status === 'assigned' && o.driverAccepted === true) {
+          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'picked_up\')">Mark Picked Up</button>';
+        } else if (o.status === 'picked_up') {
+          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'delivered\')">Mark Delivered</button>';
+        }
+
+        const newBadge = (o.status === 'assigned' && o.driverAccepted === null)
+          ? '<span class="fx-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b;">New assignment</span>'
+          : '';
+
+        html += '<div class="fx-card" style="margin-top:10px;">'
+          + newBadge
+          + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
+          + '<div>Pickup: ' + o.pickup + '</div>'
+          + '<div>Dropoff: ' + o.dropoff + '</div>'
+          + '<div>Customer: ' + o.customerName + '</div>'
+          + '<div>Status: ' + o.status + '</div>'
+          + btn
+          + '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    async function respondToOrder(orderId, accepted) {
+      await authFetch(`${window.API_BASE}/api/orders/${orderId}/respond`, {
+        method: 'PATCH',
+        body: JSON.stringify({ accepted })
+      });
+      loadMyOrders();
+    }
+
+    async function loadMyOrders() {
+      const res = await authFetch(window.API_BASE + '/api/orders/mine');
+      renderMyOrders(await res.json());
+    }
+
+    async function updateOrderStatus(orderId, status) {
+      await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+      loadMyOrders();
+    }
+
+    // --- Session check (runs once on load) ---
+    authFetch(`${window.API_BASE}/api/check-session`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        } else {
+          const driverInput = document.getElementById('driverId');
+          if (driverInput) driverInput.value = data.user.email;
+          loadMyOrders();
+        }
+      });
+
+    // --- Live map + GPS tracking ---
     const socket = io(window.API_BASE || undefined, {
       auth: { token: getAuthToken() }
     });
+    socket.on('update_orders', renderMyOrders);
+
     const map = L.map('map').setView([-20.1350, 28.5800], 15);
     let marker = null;
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    addConfiguredTileLayer(map);
 
     let hasFirstFix = false;
 
@@ -151,6 +199,8 @@
         }
       );
     }
+
+    initSupportWidget();
   </script>
 
 </body>

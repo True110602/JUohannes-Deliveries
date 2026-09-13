@@ -2,16 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register - Johannes Deliveries</title>
   <link rel="stylesheet" href="/css/theme.css" />
+  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
 </head>
 <body>
   <div class="fx-shell fx-center">
   <div style="width:100%; max-width:420px;">
 
     <div class="fx-brand">
-      <div class="fx-logo-mark">JD</div>
+      <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
       <div class="fx-brand-text"><b>Johannes</b> Deliveries</div>
     </div>
 
@@ -26,11 +30,16 @@
           <option value="customer">Customer</option>
           <option value="driver">Driver</option>
           <option value="merchant">Merchant / Restaurant</option>
-          <option value="admin">Admin</option>
         </select>
+
+        <label>Full Name</label>
+        <input type="text" name="name" required placeholder="e.g. Bhekinkosi Sibanda">
 
         <label>Email Address / Username</label>
         <input type="text" name="email" required placeholder="e.g. driver or name@example.com">
+
+        <label>Phone Number</label>
+        <input type="tel" name="phone" required placeholder="e.g. 0771234567">
 
         <label>Password</label>
         <input type="password" name="password" required placeholder="••••••••">
@@ -42,8 +51,14 @@
         <select name="paymentMethod" required>
           <option value="Cash">Cash on Delivery</option>
           <option value="EcoCash">EcoCash</option>
+          <option value="OneMoney">OneMoney</option>
+          <option value="BankTransfer">Bank Transfer</option>
           <option value="Card">Card</option>
         </select>
+
+        <label>Referral Code <span class="fx-muted" style="font-weight:400;">(optional)</span></label>
+        <input type="text" name="referralCode" id="referralCodeInput" placeholder="e.g. BHEKI4821" style="text-transform:uppercase;">
+        <p class="fx-muted" id="referralHint" style="margin-top:-8px; font-size:12px; display:none;">Get 10% off your first order!</p>
 
         <button type="submit" id="submitBtn" style="margin-top:18px;">Create Account</button>
       </form>
@@ -55,6 +70,19 @@
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script>
+    // Pre-fill the referral code from a shared invite link like
+    // /register.html?ref=BHEKI4821 (see account.html's "Copy invite link").
+    (function prefillReferralCode() {
+      const ref = new URLSearchParams(window.location.search).get('ref');
+      if (ref) {
+        document.getElementById('referralCodeInput').value = ref.toUpperCase();
+        document.getElementById('referralHint').style.display = 'block';
+      }
+    })();
+    document.getElementById('referralCodeInput').addEventListener('input', (e) => {
+      document.getElementById('referralHint').style.display = e.target.value.trim() ? 'block' : 'none';
+    });
+
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
 

@@ -19,8 +19,12 @@ function clearAuthToken() {
 
 async function authFetch(url, options = {}) {
   const token = getAuthToken();
+  // Don't force JSON headers on FormData bodies (e.g. image uploads) -
+  // the browser needs to set its own multipart/form-data boundary, and
+  // overriding it here would make the server unable to parse the upload.
+  const isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers || {})
   };
 

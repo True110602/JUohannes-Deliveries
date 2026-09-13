@@ -10,6 +10,8 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { Paynow } = require('paynow');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const User = require('./models/user');
 const DriverLocation = require('./models/DriverLocation');
@@ -17,6 +19,9 @@ const { authenticateToken, JWT_SECRET } = require('./middleware/auth');
 const catalogRoutes = require('./routes/catalog');
 const orderRoutes = require('./routes/orders');
 const merchantRoutes = require('./routes/merchant');
+const adminRoutes = require('./routes/admin');
+const accountRoutes = require('./routes/account');
+const supportRoutes = require('./routes/support');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,8 +35,50 @@ const io = new Server(server, {
 app.set('io', io);
 
 // --- MIDDLEWARE ---
+// helmet's default Content-Security-Policy blocks inline <script> tags,
+// which every page in this app currently uses - disabling just that part
+// (contentSecurityPolicy: false) while keeping helmet's other protections
+// (clickjacking prevention, MIME-sniffing protection, etc.) active.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
+
+// --- RATE LIMITING ---
+// Prevents brute-force password guessing, spam account creation, and
+// abuse of the password-reset flow (which sends real emails and involves
+// a guessable 6-digit code that would otherwise be brute-forceable).
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many accounts created from this network. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many password reset attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/', generalApiLimiter);
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -80,6 +127,7 @@ mongoose.connection.once('open', () => {
 });
 
 // --- NODEMAILER (password reset emails) ---
+const EMAIL_CONFIGURED = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
 const transporter = nodemailer.createTransport({
   service: process.env.EMAIL_SERVICE || 'gmail',
   auth: {
@@ -87,6 +135,26 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+
+if (!EMAIL_CONFIGURED) {
+  console.warn('EMAIL_USER / EMAIL_PASS not set - password reset emails cannot be sent.');
+} else {
+  // Verify the SMTP credentials at boot so a bad password/app-password shows
+  // up clearly in the server logs right away, instead of only failing (with
+  // a generic message) the first time a user actually requests a reset.
+  transporter.verify()
+    .then(() => console.log('\u2705 Email transporter ready - password reset emails can be sent'))
+    .catch((err) => {
+      console.error('------------------------------------------------------------');
+      console.error('\u274c Email transporter verification failed:', err.message);
+      if ((process.env.EMAIL_SERVICE || 'gmail') === 'gmail') {
+        console.error('If using Gmail: EMAIL_PASS must be a 16-character Google "App');
+        console.error('Password" (Google Account -> Security -> 2-Step Verification ->');
+        console.error('App passwords). A normal Gmail account password will be rejected.');
+      }
+      console.error('------------------------------------------------------------');
+    });
+}
 
 // --- PAYNOW (EcoCash payments) ---
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
@@ -100,6 +168,21 @@ if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
   console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 app.set('paynow', paynow);
+
+// Generates a short, human-shareable referral code (e.g. "BHEKI4821") and
+// retries on the rare collision - codes are unique on the User model, so
+// findOne() here is just a pre-check to avoid relying on the DB rejecting
+// duplicates as the normal path.
+async function generateUniqueReferralCode(seed) {
+  const base = (seed || 'USER').replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER';
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+    const exists = await User.findOne({ referralCode: candidate });
+    if (!exists) return candidate;
+  }
+  // Extremely unlikely fallback if 5 random attempts all collided.
+  return `${base}${Date.now().toString().slice(-6)}`;
+}
 
 function getRedirectUrlByRole(role) {
   switch (role) {
@@ -115,12 +198,77 @@ function getRedirectUrlByRole(role) {
 // AUTH ROUTES
 // ==========================================
 
-app.post('/api/register', async (req, res) => {
-  try {
-    const { email, password, role, address, paymentMethod } = req.body;
+// --- INPUT VALIDATION HELPERS ---
+// isPlainString guards against a NoSQL injection trick: MongoDB/Mongoose
+// query operators like { "$ne": null } are valid JSON, so if a field is
+// passed as an object instead of a string and used directly in a query
+// (e.g. User.findOne({ email })), an attacker could try to manipulate the
+// query logic. Requiring these fields to actually be strings first closes
+// that off.
+function isPlainString(val) {
+  return typeof val === 'string';
+}
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required.' });
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Demo/seed accounts use bare usernames like "driver" rather than real
+// emails, so this only enforces email format for addresses containing an
+// "@" - plain usernames are left as-is for backward compatibility.
+function isValidEmailOrUsername(val) {
+  if (!isPlainString(val) || !val.trim()) return false;
+  if (val.includes('@')) return EMAIL_REGEX.test(val.trim());
+  return true;
+}
+
+function isValidPassword(val) {
+  return isPlainString(val) && val.length >= 6;
+}
+
+// Map tile config for every page's Leaflet instance. Kept server-side and
+// fetched at runtime (rather than hardcoded in the frontend) so switching
+// providers, or adding/rotating an API key, is a one-line env var change
+// with no frontend redeploy. Falls back to CARTO's free, no-key basemap
+// if MAPTILER_API_KEY isn't set, so the app still works with zero setup -
+// the key just gets you MapTiler's higher-quality/higher-limit tiles.
+// MapTiler keys are meant to be used client-side like this; restrict them
+// to your app's domain(s) in the MapTiler dashboard rather than treating
+// them as secret.
+app.get('/api/map-config', (req, res) => {
+  const maptilerKey = process.env.MAPTILER_API_KEY;
+
+  if (maptilerKey) {
+    return res.json({
+      tileUrlTemplate: `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`,
+      attribution: '&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; OpenStreetMap contributors',
+      maxZoom: 20
+    });
+  }
+
+  res.json({
+    tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    maxZoom: 19
+  });
+});
+
+app.post('/api/register', registerLimiter, async (req, res) => {
+  try {
+    const { name, email, phone, password, role, address, paymentMethod, referralCode } = req.body;
+
+    if (!isPlainString(name) || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Name is required.' });
+    }
+    if (!isValidEmailOrUsername(email)) {
+      return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+    }
+    if (!isPlainString(phone) || !phone.trim()) {
+      return res.status(400).json({ success: false, message: 'Phone number is required.' });
+    }
+    if (!isPlainString(address) || !address.trim()) {
+      return res.status(400).json({ success: false, message: 'Address is required.' });
+    }
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
     // Only customer/driver/merchant can be self-registered - admin stays
@@ -133,13 +281,32 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email is already registered.' });
     }
 
+    // Referral code lookup happens before creating the new account so a
+    // typo'd/unknown code just quietly doesn't attach a referrer, rather
+    // than failing the whole registration - referrals are a bonus, never
+    // a blocker to signing up.
+    let referredByEmail = null;
+    if (isPlainString(referralCode) && referralCode.trim()) {
+      const referrer = await User.findOne({ referralCode: referralCode.trim().toUpperCase() });
+      if (referrer && referrer.email !== email) {
+        referredByEmail = referrer.email;
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
+      name: name.trim(),
       email,
+      phone: phone.trim(),
       password: hashedPassword,
       role: chosenRole,
       address: address || '',
-      paymentMethod: paymentMethod || 'Cash'
+      paymentMethod: paymentMethod || 'Cash',
+      // New merchants need admin approval before their storefront goes
+      // live - every other role is unaffected by this field.
+      approved: chosenRole !== 'merchant',
+      referralCode: await generateUniqueReferralCode(name),
+      referredBy: referredByEmail
     });
 
     const token = jwt.sign({ id: newUser._id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -156,11 +323,11 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!isPlainString(email) || !isPlainString(password) || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide email and password.' });
     }
 
@@ -226,44 +393,57 @@ app.post('/api/seed-demo-users', async (req, res) => {
   }
 });
 
-app.post('/api/request-password-reset', async (req, res) => {
+app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (!isPlainString(email) || !email.trim()) {
       return res.status(400).json({ success: false, message: 'Email is required.' });
     }
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'No account with that email was found.' });
+    if (!EMAIL_CONFIGURED) {
+      return res.status(503).json({ success: false, message: 'Password reset email is not configured on the server yet. Contact the administrator.' });
     }
 
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedCode = await bcrypt.hash(resetCode, 10);
-    user.resetCode = hashedCode;
-    user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
-    await user.save();
+    const user = await User.findOne({ email });
 
-    await transporter.sendMail({
-      from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Password Reset Verification Code - Johannes Deliveries',
-      text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
-    });
+    // Always respond the same way whether or not the account exists, so
+    // this endpoint can't be used to check which emails are registered
+    // (a common account-enumeration attack). The email only actually
+    // sends if a matching account was found.
+    if (user) {
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = await bcrypt.hash(resetCode, 10);
+      user.resetCode = hashedCode;
+      user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
+      await user.save();
 
-    res.json({ success: true, message: 'Verification code sent to email.' });
+      await transporter.sendMail({
+        from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Password Reset Verification Code - Johannes Deliveries',
+        text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
+      });
+    }
+
+    res.json({ success: true, message: 'If that email is registered, a verification code has been sent.' });
   } catch (err) {
-    console.error('Password Reset Request Error:', err);
-    res.status(500).json({ success: false, message: 'Failed to send reset code. Check server mail settings (EMAIL_USER/EMAIL_PASS env vars).' });
+    // Log the actual nodemailer error (e.g. "Invalid login") server-side -
+    // this is almost always a rejected/missing Gmail App Password, not a
+    // code bug, so the real reason only shows up here, in the Render logs.
+    console.error('Password Reset Request Error:', err.message || err);
+    res.status(500).json({ success: false, message: 'Failed to send reset code. Check the server logs for the exact mail error.' });
   }
 });
 
-app.post('/api/reset-password', async (req, res) => {
+app.post('/api/reset-password', passwordResetLimiter, async (req, res) => {
   try {
     const { email, resetCode, newPassword } = req.body;
 
-    if (!email || !resetCode || !newPassword) {
+    if (!isPlainString(email) || !isPlainString(resetCode) || !isPlainString(newPassword)) {
       return res.status(400).json({ success: false, message: 'All fields are required.' });
+    }
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
     const user = await User.findOne({ email, resetCodeExpires: { $gt: Date.now() } });
@@ -301,6 +481,9 @@ app.post('/api/reset-password', async (req, res) => {
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/merchant', merchantRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/account', accountRoutes);
+app.use('/api/support', supportRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
