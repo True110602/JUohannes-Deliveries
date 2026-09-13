@@ -103,6 +103,149 @@ function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlIn
   });
 }
 
+// --- Data Saver mode ---
+// A visitor-controlled setting (stored locally, not per-account) that
+// pages can check before doing anything data-heavy: loading the Leaflet
+// map/tiles, fetching item/shop photos, or pulling in the Google Fonts
+// stylesheet (see the inline loader script in each page's <head>).
+// Kept dead simple (one flag, no server round-trip) since the entire
+// point is to work well on a weak/expensive connection.
+function isDataSaverOn() {
+  return localStorage.getItem('fx_data_saver') === 'on';
+}
+
+function setDataSaver(on) {
+  localStorage.setItem('fx_data_saver', on ? 'on' : 'off');
+}
+
+// Renders a toggle switch into the given container id, wired to
+// isDataSaverOn()/setDataSaver(). onChange(isOn) fires after the value is
+// saved - most pages use it to just reload(), since disabling e.g. the
+// map only takes effect on next render.
+function renderDataSaverToggle(containerId, onChange) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const on = isDataSaverOn();
+  container.innerHTML = `
+    <label class="fx-data-saver-toggle">
+      <span class="fx-switch">
+        <input type="checkbox" id="fxDataSaverCheckbox" ${on ? 'checked' : ''}>
+        <span class="fx-switch-track"></span>
+      </span>
+      Data Saver
+    </label>
+  `;
+  document.getElementById('fxDataSaverCheckbox').addEventListener('change', (e) => {
+    setDataSaver(e.target.checked);
+    if (onChange) onChange(e.target.checked);
+  });
+}
+
+// --- Support / "Report an issue" widget ---
+// Injects a floating button + modal into the current page and wires it to
+// POST /api/support. Works for a logged-in user (their account is
+// attached automatically via authFetch's token) or a guest (falls back to
+// a plain fetch and an optional name/email field). Call this once per
+// page, after config.js has set window.API_BASE.
+function initSupportWidget() {
+  if (document.getElementById('fxSupportFab')) return; // already initialized
+
+  const loggedIn = !!(typeof getAuthToken === 'function' && getAuthToken());
+
+  const guestFieldsHtml = loggedIn ? '' : `
+    <label>Your name</label>
+    <input type="text" id="fxSupportName" placeholder="So we know who's reporting this">
+    <label>Your email (optional)</label>
+    <input type="email" id="fxSupportEmail" placeholder="So we can follow up">
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <button type="button" id="fxSupportFab" class="fx-btn-ghost fx-support-fab">Report an issue</button>
+    <div id="fxSupportModal" class="fx-modal-backdrop">
+      <div class="fx-card fx-modal">
+        <div class="fx-eyebrow">Support</div>
+        <h3 style="margin-top:0;">Report a problem</h3>
+        <form id="fxSupportForm">
+          ${guestFieldsHtml}
+          <label>What's this about?</label>
+          <input type="text" id="fxSupportSubject" required placeholder="e.g. Order never arrived">
+          <label>Details</label>
+          <textarea id="fxSupportMessage" required rows="4" placeholder="Tell us what happened - order number, timing, anything that helps." style="width:100%; resize:vertical; font-family:inherit; padding:10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); border:1px solid var(--border); color:var(--text-0);"></textarea>
+          <div class="fx-row-end" style="margin-top:12px;">
+            <button type="button" id="fxSupportCancel" class="fx-btn-muted" style="width:auto;">Cancel</button>
+            <button type="submit" id="fxSupportSubmit" style="width:auto;">Send report</button>
+          </div>
+        </form>
+        <p id="fxSupportStatus" class="fx-support-status"></p>
+      </div>
+    </div>
+  `);
+
+  const modal = document.getElementById('fxSupportModal');
+  const openModal = () => modal.classList.add('fx-open');
+  const closeModal = () => {
+    modal.classList.remove('fx-open');
+    document.getElementById('fxSupportStatus').innerText = '';
+  };
+
+  document.getElementById('fxSupportFab').addEventListener('click', openModal);
+  document.getElementById('fxSupportCancel').addEventListener('click', closeModal);
+
+  document.getElementById('fxSupportForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById('fxSupportSubmit');
+    const status = document.getElementById('fxSupportStatus');
+    const payload = {
+      subject: document.getElementById('fxSupportSubject').value,
+      message: document.getElementById('fxSupportMessage').value
+    };
+    if (!loggedIn) {
+      const nameEl = document.getElementById('fxSupportName');
+      const emailEl = document.getElementById('fxSupportEmail');
+      if (nameEl) payload.name = nameEl.value;
+      if (emailEl) payload.email = emailEl.value;
+    }
+
+    setButtonLoading(submitBtn, true, 'Sending...');
+    status.style.color = '';
+    status.innerText = '';
+
+    try {
+      const base = window.API_BASE || '';
+      const doFetch = loggedIn ? authFetch : fetch;
+      const res = await doFetch(`${base}/api/support`, {
+        method: 'POST',
+        headers: loggedIn ? undefined : { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setButtonLoading(submitBtn, false);
+      if (data.success) {
+        status.style.color = '#4ade80';
+        status.innerText = data.message || 'Thanks - your report has been logged.';
+        document.getElementById('fxSupportForm').reset();
+        setTimeout(closeModal, 1800);
+      } else {
+        status.style.color = '#ff5d7a';
+        status.innerText = data.message || 'Could not send your report.';
+      }
+    } catch (err) {
+      setButtonLoading(submitBtn, false);
+      status.style.color = '#ff5d7a';
+      status.innerText = 'Server connection error. Please try again.';
+    }
+  });
+}
+
+// Minimal HTML-escaping for untrusted, free-form user text (e.g. support
+// ticket messages) before it's dropped into innerHTML via template
+// literals elsewhere in the app.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
 function showToast(message, type) {
   let stack = document.querySelector('.fx-toast-stack');
   if (!stack) {
