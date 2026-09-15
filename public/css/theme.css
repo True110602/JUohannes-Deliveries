@@ -373,6 +373,7 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
   display: none;
 }
 .fx-drop-preview.fx-has-image{ display: block; }
+.fx-drop-preview-round{ border-radius: 50%; }
 
 /* ---------- shop picker (customer catalog) ---------- */
 /* Horizontal sliding row of shop tiles - swipe/scroll on touch devices,
@@ -456,6 +457,34 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 }
 .fx-support-status{ font-size: 13px; margin-top: 8px; }
 
+/* ---------- notification center ---------- */
+.fx-notif-wrap{ position: relative; display: inline-block; }
+.fx-notif-bell{ position: relative; font-size: 16px; }
+.fx-notif-badge{
+  position: absolute; top: -4px; right: -4px;
+  background: #ff5d7a; color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 999px; min-width: 16px; height: 16px; line-height: 16px;
+  text-align: center; padding: 0 3px;
+}
+.fx-notif-panel{
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 950;
+  width: 300px; max-height: 360px; overflow-y: auto; padding: 14px;
+}
+.fx-notif-item{ padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
+.fx-notif-item:last-child{ border-bottom: none; }
+.fx-notif-unread{ background: rgba(139,123,255,0.08); border-radius: var(--radius-sm); }
+
+/* ---------- nav avatar ---------- */
+.fx-nav-avatar{
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  cursor: pointer; border: 1px solid var(--border-strong); flex: none;
+}
+.fx-nav-avatar-fallback{
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(139,123,255,0.18); color: var(--text-0);
+  font-weight: 700; font-size: 13px;
+}
+
 /* ---------- referral card ---------- */
 .fx-referral-code{
   font-size: 22px; font-weight: 700; letter-spacing: 2px;
@@ -465,3 +494,4 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 .fx-referral-stats{ display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
 .fx-referral-stat b{ display: block; font-size: 20px; }
 .fx-referral-stat span{ font-size: 11.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
+
