@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
 const User = require('../models/user');
-const { requireRole, authenticateToken, JWT_SECRET } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth');
 
 const DRIVER_COMMISSION_RATE = 0.10;   // 10% - drivers earn this share of each order's amount
 // What the platform itself keeps from each order. Previously this had no
@@ -40,32 +39,15 @@ const PLATFORM_BANK_DETAILS = {
   accountNumber: process.env.PLATFORM_BANK_ACCOUNT_NUMBER || '(account number not configured)'
 };
 
-// Reads a Bearer token if one is present, without failing the request if
-// it's missing or invalid - used here so an order can be linked to the
-// customer's account when they're logged in, without turning this into a
-// route that suddenly requires auth (customer.html already gates the
-// order page behind login today, but this keeps the endpoint itself
-// exactly as permissive as it was before).
-function optionalAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return next();
-
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (!err) req.user = decoded;
-    next();
-  });
-}
-
-router.post('/', optionalAuth, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const {
-      customerName, pickup, dropoff, item, paymentMethod, ecocashNumber, mobileNumber,
+      pickup, dropoff, item, paymentMethod, ecocashNumber, mobileNumber,
       amount, tip, lineItems, useCredit
     } = req.body;
 
-    if (!customerName || !pickup || !dropoff) {
-      return res.status(400).json({ success: false, message: 'customerName, pickup, and dropoff are required' });
+    if (!pickup || !dropoff) {
+      return res.status(400).json({ success: false, message: 'pickup and dropoff are required' });
     }
 
     const chosenPaymentMethod = ALL_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : 'Cash';
@@ -86,8 +68,8 @@ router.post('/', optionalAuth, async (req, res) => {
     const tipAmount = Math.max(0, parseFloat(tip) || 0);
 
     // --- Referral discount + credit redemption ---
-    // Both only apply to logged-in customers (a guest has no account to
-    // hold a referral relationship or credit balance against).
+    // Every order now belongs to a logged-in account (see authenticateToken
+    // above), so this always has a real user to check.
     let discountApplied = 0;
     let creditApplied = 0;
     // NOTE: hasCompletedFirstOrder only flips to true once an order is
@@ -97,18 +79,19 @@ router.post('/', optionalAuth, async (req, res) => {
     // back-to-back, all discounted, before any of them is delivered.
     // Acceptable for a launch-stage promo; tighten later (e.g. flip the
     // flag at order-creation time instead) if abuse becomes a problem.
-    let referredCustomer = null;
-    if (req.user && req.user.email) {
-      referredCustomer = await User.findById(req.user.id);
-      if (referredCustomer) {
-        if (referredCustomer.referredBy && !referredCustomer.hasCompletedFirstOrder) {
-          discountApplied = Math.round(subtotalBeforeDiscount * REFERRAL_DISCOUNT_RATE * 100) / 100;
-        }
-        if (useCredit && referredCustomer.referralCredit > 0) {
-          const remainingAfterDiscount = Math.max(0, subtotalBeforeDiscount - discountApplied);
-          creditApplied = Math.min(referredCustomer.referralCredit, remainingAfterDiscount);
-        }
-      }
+    const orderingCustomer = await User.findById(req.user.id);
+    if (!orderingCustomer) {
+      // Shouldn't happen with a valid token (the account it points to was
+      // deleted?), but better to fail loudly than create an order with no
+      // real customer behind it.
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+    if (orderingCustomer.referredBy && !orderingCustomer.hasCompletedFirstOrder) {
+      discountApplied = Math.round(subtotalBeforeDiscount * REFERRAL_DISCOUNT_RATE * 100) / 100;
+    }
+    if (useCredit && orderingCustomer.referralCredit > 0) {
+      const remainingAfterDiscount = Math.max(0, subtotalBeforeDiscount - discountApplied);
+      creditApplied = Math.min(orderingCustomer.referralCredit, remainingAfterDiscount);
     }
 
     const orderAmount = Math.max(0, subtotalBeforeDiscount - discountApplied - creditApplied);
@@ -119,8 +102,12 @@ router.post('/', optionalAuth, async (req, res) => {
     }
 
     const order = new Order({
-      customerName,
-      customerEmail: (req.user && req.user.email) || null,
+      // Pulled from the account rather than trusted from the client - the
+      // customer no longer types this in on every order, and a logged-in
+      // user can no longer submit an order under a different display name
+      // than their own account.
+      customerName: orderingCustomer.name,
+      customerEmail: req.user.email,
       pickup,
       dropoff,
       item: item || '',
@@ -177,9 +164,9 @@ router.post('/', optionalAuth, async (req, res) => {
     // order actually saves, the customer simply keeps their credit (safe
     // failure direction) rather than losing it for an order that never
     // went through.
-    if (creditApplied > 0 && referredCustomer) {
-      referredCustomer.referralCredit = Math.round((referredCustomer.referralCredit - creditApplied) * 100) / 100;
-      await referredCustomer.save();
+    if (creditApplied > 0 && orderingCustomer) {
+      orderingCustomer.referralCredit = Math.round((orderingCustomer.referralCredit - creditApplied) * 100) / 100;
+      await orderingCustomer.save();
     }
 
     await order.save();
