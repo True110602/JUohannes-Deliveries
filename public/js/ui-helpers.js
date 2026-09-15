@@ -30,12 +30,16 @@ function setButtonLoading(button, isLoading, loadingText) {
 // hiddenUrlInputId: a hidden input that stores the resulting URL, so
 //   existing form submission code that reads it doesn't need to change
 // onUploaded(url): optional callback fired after a successful upload
-// Uploads go to /api/merchant/upload-image via authFetch (merchant-only).
-function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlInputId, onUploaded }) {
+// uploadUrl: which endpoint receives the file - defaults to the
+//   merchant-only one (existing callers didn't specify this), but
+//   account.html passes /api/account/upload-image so every role can
+//   upload their own profile picture, not just merchants.
+function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlInputId, onUploaded, uploadUrl }) {
   const zone = document.getElementById(dropZoneId);
   const input = document.getElementById(fileInputId);
   const preview = previewImgId ? document.getElementById(previewImgId) : null;
   const hiddenInput = hiddenUrlInputId ? document.getElementById(hiddenUrlInputId) : null;
+  const endpoint = uploadUrl || '/api/merchant/upload-image';
   if (!zone || !input) return;
 
   function showPreview(url) {
@@ -62,7 +66,7 @@ function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlIn
     try {
       const formData = new FormData();
       formData.append('image', file);
-      const res = await authFetch(`${window.API_BASE}/api/merchant/upload-image`, {
+      const res = await authFetch(`${window.API_BASE}${endpoint}`, {
         method: 'POST',
         body: formData
       });
@@ -273,6 +277,151 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str == null ? '' : String(str);
   return div.innerHTML;
+}
+
+// --- Notification center ---
+// A bell icon + dropdown, shared across customer/driver/merchant/admin
+// pages. Requires the page to already have loaded the Socket.IO client
+// script (<script src="/socket.io/socket.io.js">) and to have a valid
+// auth token - call this only after confirming the user is logged in.
+let fxNotificationSocket = null;
+
+function initNotificationCenter() {
+  if (document.getElementById('fxNotifBell')) return; // already initialized
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : null;
+  if (!token) return; // notifications are for logged-in accounts only
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="fxNotifWrap" class="fx-notif-wrap">
+      <button type="button" id="fxNotifBell" class="fx-btn-ghost fx-notif-bell" style="width:auto;">
+        🔔<span id="fxNotifBadge" class="fx-notif-badge" style="display:none;">0</span>
+      </button>
+      <div id="fxNotifPanel" class="fx-card fx-notif-panel" style="display:none;">
+        <div class="fx-row-end" style="justify-content:space-between; margin-bottom:8px;">
+          <b>Notifications</b>
+          <button type="button" id="fxNotifMarkAll" class="fx-btn-muted" style="width:auto; padding:4px 10px; font-size:12px;">Mark all read</button>
+        </div>
+        <div id="fxNotifList"><span class="inline-spinner fx-spinner-light"></span>Loading...</div>
+      </div>
+    </div>
+  `);
+
+  const panel = document.getElementById('fxNotifPanel');
+  const badge = document.getElementById('fxNotifBadge');
+  const list = document.getElementById('fxNotifList');
+
+  function setUnreadCount(n) {
+    if (n > 0) {
+      badge.style.display = 'inline-block';
+      badge.innerText = n > 9 ? '9+' : String(n);
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function renderList(notifications) {
+    if (!notifications.length) {
+      list.innerHTML = '<p class="fx-muted" style="margin:6px 0;">Nothing yet.</p>';
+      return;
+    }
+    list.innerHTML = notifications.map(n => `
+      <div class="fx-notif-item ${n.read ? '' : 'fx-notif-unread'}" data-id="${n._id}">
+        <div style="font-weight:600; font-size:13px;">${escapeHtml(n.title)}</div>
+        <div class="fx-muted" style="font-size:12.5px;">${escapeHtml(n.message)}</div>
+        <div class="fx-muted" style="font-size:10.5px; margin-top:2px;">${new Date(n.createdAt).toLocaleString()}</div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.fx-notif-item').forEach(el => {
+      el.addEventListener('click', async () => {
+        if (!el.classList.contains('fx-notif-unread')) return;
+        el.classList.remove('fx-notif-unread');
+        try {
+          await authFetch(`${window.API_BASE}/api/notifications/${el.dataset.id}/read`, { method: 'PATCH' });
+          refreshUnreadCount();
+        } catch (err) { /* visual state already updated; a background retry isn't worth the complexity here */ }
+      });
+    });
+  }
+
+  async function loadNotifications() {
+    try {
+      const res = await authFetch(`${window.API_BASE}/api/notifications`);
+      const data = await res.json();
+      if (data.success) {
+        renderList(data.notifications);
+        setUnreadCount(data.unreadCount);
+      }
+    } catch (err) {
+      list.innerHTML = '<p class="fx-muted" style="margin:6px 0;">Could not load notifications.</p>';
+    }
+  }
+
+  async function refreshUnreadCount() {
+    try {
+      const res = await authFetch(`${window.API_BASE}/api/notifications`);
+      const data = await res.json();
+      if (data.success) setUnreadCount(data.unreadCount);
+    } catch (err) { /* stale badge count is a minor, self-correcting issue */ }
+  }
+
+  document.getElementById('fxNotifBell').addEventListener('click', () => {
+    const willShow = panel.style.display === 'none';
+    panel.style.display = willShow ? 'block' : 'none';
+    if (willShow) loadNotifications();
+  });
+
+  document.getElementById('fxNotifMarkAll').addEventListener('click', async () => {
+    try {
+      await authFetch(`${window.API_BASE}/api/notifications/read-all`, { method: 'PATCH' });
+      list.querySelectorAll('.fx-notif-unread').forEach(el => el.classList.remove('fx-notif-unread'));
+      setUnreadCount(0);
+    } catch (err) { showToast('Could not mark notifications as read.', 'error'); }
+  });
+
+  // Close the panel when clicking anywhere outside it.
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('fxNotifWrap').contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  loadNotifications();
+
+  // Live push: same socket.io client every map/tracking page already
+  // loads. 'register' proves who we are (server verifies the token
+  // itself - see server.js) so notifications actually land in the right
+  // person's room instead of broadcasting to everyone.
+  if (typeof io === 'function') {
+    fxNotificationSocket = io(window.API_BASE || undefined);
+    fxNotificationSocket.emit('register', token);
+    fxNotificationSocket.on('notification', () => {
+      // Re-fetch rather than trying to splice the pushed item into
+      // whatever partial state the panel is in - simpler, and this list
+      // is small enough that the extra request is negligible.
+      refreshUnreadCount();
+      if (panel.style.display !== 'none') loadNotifications();
+    });
+  }
+}
+
+async function renderNavAvatar(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  try {
+    const res = await authFetch(`${window.API_BASE}/api/account/me`);
+    const data = await res.json();
+    if (!data.success) return;
+    if (data.user.profilePicUrl) {
+      container.innerHTML = `<img src="${data.user.profilePicUrl}" class="fx-nav-avatar" alt="Your profile picture" title="My Account" onclick="window.location.href='/account.html'">`;
+    } else {
+      // No picture set yet - a fallback initial beats a broken image or
+      // an empty gap in the nav, and doubles as a visible hint that
+      // there's an avatar slot waiting to be filled in on account.html.
+      const initial = ((data.user.name || data.user.email || '?').trim().charAt(0) || '?').toUpperCase();
+      container.innerHTML = `<div class="fx-nav-avatar fx-nav-avatar-fallback" title="My Account" onclick="window.location.href='/account.html'">${initial}</div>`;
+    }
+  } catch (err) { /* nav avatar is decorative - fail silently */ }
 }
 
 function showToast(message, type) {
