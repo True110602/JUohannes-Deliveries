@@ -3,13 +3,14 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const { authenticateToken } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 // Any logged-in user's own account details. Previously there was no way
 // to view or edit this once registered - only the forgot-password flow
 // ever touched an account after signup.
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('name email phone address role');
+    const user = await User.findById(req.user.id).select('name email phone address role profilePicUrl');
     if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
     res.json({ success: true, user });
   } catch (err) {
@@ -19,18 +20,39 @@ router.get('/me', authenticateToken, async (req, res) => {
 
 router.patch('/me', authenticateToken, async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, phone, address, profilePicUrl } = req.body;
     const update = {};
     if (typeof name === 'string' && name.trim()) update.name = name.trim();
     if (typeof phone === 'string' && phone.trim()) update.phone = phone.trim();
     if (typeof address === 'string' && address.trim()) update.address = address.trim();
+    // Unlike name/phone/address, an empty string here is a valid, meaningful
+    // update - it's how "remove my profile picture" would work - so it's
+    // not filtered out the same way a blank name would be.
+    if (typeof profilePicUrl === 'string') update.profilePicUrl = profilePicUrl;
 
     const user = await User.findByIdAndUpdate(req.user.id, update, { new: true })
-      .select('name email phone address role');
+      .select('name email phone address role profilePicUrl');
     res.json({ success: true, user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Profile picture upload for ANY logged-in account, not just merchants -
+// merchant.html already had its own /api/merchant/upload-image (kept, since
+// merchant also uses uploads for catalog item photos), but customers,
+// drivers, and admins previously had no way to upload one at all even
+// though the User model has always had a profilePicUrl field.
+router.post('/upload-image', authenticateToken, (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file was uploaded.' });
+    }
+    res.json({ success: true, url: `/uploads/${req.file.filename}` });
+  });
 });
 
 // Changing a password while logged in - requires the current password,
