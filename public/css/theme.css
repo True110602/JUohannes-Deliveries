@@ -375,8 +375,24 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 .fx-drop-preview.fx-has-image{ display: block; }
 
 /* ---------- shop picker (customer catalog) ---------- */
-.shop-grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 10px; }
+/* Horizontal sliding row of shop tiles - swipe/scroll on touch devices,
+   scrollbar drag or shift+wheel on desktop. scroll-snap keeps each tile
+   landing cleanly instead of stopping mid-card. */
+.shop-grid{
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 6px; /* room for the scrollbar so it doesn't sit on the cards */
+  -webkit-overflow-scrolling: touch;
+}
+.shop-grid::-webkit-scrollbar{ height: 6px; }
+.shop-grid::-webkit-scrollbar-thumb{ background: var(--border-strong); border-radius: 999px; }
 .shop-card{
+  flex: 0 0 128px;
+  scroll-snap-align: start;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(120,140,180,0.05);
