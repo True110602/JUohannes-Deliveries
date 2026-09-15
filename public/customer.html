@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
   <script src="/js/geo-helpers.js"></script>
@@ -68,6 +69,7 @@
     </div>
     <div id="dataSaverToggleContainer"></div>
     <button id="navMyOrders" class="fx-btn-ghost" style="width:auto;" onclick="showOrderHistory()">My Orders</button>
+    <span id="navAvatarContainer"></span>
     <button id="navMyAccount" class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
     <button id="navLogout" class="fx-btn-ghost" style="width:auto;" onclick="logoutCustomer()">Logout</button>
     <button id="navSignIn" class="fx-btn-ghost" style="width:auto; display:none;" onclick="window.location.href='/login.html'">Sign in</button>
@@ -502,6 +504,10 @@
       document.getElementById('navLogout').style.display = window.isGuest ? 'none' : '';
       document.getElementById('navSignIn').style.display = window.isGuest ? '' : 'none';
       document.getElementById('guestBanner').style.display = window.isGuest ? 'flex' : 'none';
+      if (!window.isGuest) {
+        initNotificationCenter();
+        renderNavAvatar('navAvatarContainer');
+      }
     });
 
     // --- Order history ---
