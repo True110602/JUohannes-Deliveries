@@ -32,6 +32,7 @@ router.get('/shops', async (req, res) => {
         merchantEmail: email,
         shopName: (merchant && merchant.shopName) || email,
         profilePicUrl: (merchant && merchant.profilePicUrl) || '',
+        address: (merchant && merchant.address) || '',
         itemCount: countByEmail.get(email) || 0
       };
     });
