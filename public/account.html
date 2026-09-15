@@ -46,6 +46,14 @@
       <h3 style="margin-top:0;">Your details</h3>
 
       <form id="profileForm">
+        <label>Profile Picture</label>
+        <div class="fx-drop-zone" id="avatarDropZone">
+          <img id="avatarPreview" class="fx-drop-preview fx-drop-preview-round" alt="Profile picture preview">
+          <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here</div>
+          <input type="file" id="avatarFile" accept="image/*">
+        </div>
+        <input type="hidden" id="avatarUrl">
+
         <label>Full Name</label>
         <input type="text" id="accName" placeholder="Full name">
 
@@ -99,6 +107,12 @@
           document.getElementById('accEmail').value = data.user.email || '';
           document.getElementById('accPhone').value = data.user.phone || '';
           document.getElementById('accAddress').value = data.user.address || '';
+          if (data.user.profilePicUrl) {
+            document.getElementById('avatarUrl').value = data.user.profilePicUrl;
+            const preview = document.getElementById('avatarPreview');
+            preview.src = data.user.profilePicUrl;
+            preview.classList.add('fx-has-image');
+          }
         }
       } catch (err) {
         console.error('Could not load account', err);
@@ -133,6 +147,29 @@
     loadAccount();
     loadReferralInfo();
     initSupportWidget();
+
+    setupImageDropZone({
+      dropZoneId: 'avatarDropZone',
+      fileInputId: 'avatarFile',
+      previewImgId: 'avatarPreview',
+      hiddenUrlInputId: 'avatarUrl',
+      uploadUrl: '/api/account/upload-image',
+      // Saves immediately on upload rather than waiting for "Save
+      // changes" below - losing a freshly-uploaded picture because the
+      // person navigated away without noticing a separate save step
+      // would be a worse experience than just saving it right away.
+      onUploaded: async (url) => {
+        try {
+          await authFetch(`${window.API_BASE}/api/account/me`, {
+            method: 'PATCH',
+            body: JSON.stringify({ profilePicUrl: url })
+          });
+          showToast('Profile picture updated!', 'success');
+        } catch (err) {
+          showToast('Picture uploaded, but could not save it to your profile.', 'error');
+        }
+      }
+    });
 
     document.getElementById('profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
