@@ -29,6 +29,7 @@
           <h2 style="margin:6px 0 0;">Navigation portal</h2>
         </div>
       </div>
+      <span id="navAvatarContainer"></span>
       <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
       <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
     </div>
@@ -201,6 +202,8 @@
     }
 
     initSupportWidget();
+    initNotificationCenter();
+    renderNavAvatar('navAvatarContainer');
   </script>
 
 </body>
