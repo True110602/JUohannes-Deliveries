@@ -85,11 +85,25 @@
     <h2 style="margin-top:0;">Book a delivery / order</h2>
 
     <form id="orderForm">
-      <label>Customer Name</label>
-      <input type="text" name="customerName" required placeholder="e.g. Bhekinkosi Sibanda">
+      <h3 style="margin-top:0;">Shops</h3>
+      <div id="shopSelectionView">
+        <div id="shopGrid" class="shop-grid"><span class="inline-spinner fx-spinner-light"></span>Loading shops...</div>
+      </div>
+
+      <div id="shopMenuView" style="display:none;">
+        <button type="button" id="backToShopsBtn" class="fx-btn-muted" style="width:auto; margin-bottom:12px;">&larr; All shops</button>
+        <h4 id="currentShopName" style="margin:0 0 10px;"></h4>
+        <div id="customerCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading menu...</div>
+      </div>
+
+      <div id="orderSummary" style="display:none;">
+        <b>Your order:</b>
+        <ul id="orderSummaryList"></ul>
+      </div>
+      <input type="hidden" name="item" id="itemField">
 
       <label>Pickup Location</label>
-      <input type="text" name="pickup" required placeholder="e.g. Ascot Shopping Centre">
+      <input type="text" name="pickup" id="pickupInput" required readonly placeholder="Select a shop above first">
 
       <label>Drop-off Coordinates (Click map below)</label>
       <input type="text" name="dropoff" required placeholder="Coordinates will appear here">
@@ -108,23 +122,6 @@
           <input type="text" id="manualLng" placeholder="Longitude" style="flex:1;">
         </div>
       </div>
-
-      <h3>Shops</h3>
-      <div id="shopSelectionView">
-        <div id="shopGrid" class="shop-grid"><span class="inline-spinner fx-spinner-light"></span>Loading shops...</div>
-      </div>
-
-      <div id="shopMenuView" style="display:none;">
-        <button type="button" id="backToShopsBtn" class="fx-btn-muted" style="width:auto; margin-bottom:12px;">&larr; All shops</button>
-        <h4 id="currentShopName" style="margin:0 0 10px;"></h4>
-        <div id="customerCatalogList"><span class="inline-spinner fx-spinner-light"></span>Loading menu...</div>
-      </div>
-
-      <div id="orderSummary" style="display:none;">
-        <b>Your order:</b>
-        <ul id="orderSummaryList"></ul>
-      </div>
-      <input type="hidden" name="item" id="itemField">
 
       <label>Add a tip for your driver (optional)</label>
       <input type="number" name="tip" id="tipInput" step="0.01" min="0" value="0" placeholder="0.00">
@@ -416,7 +413,7 @@
             <div class="shop-card-name">${shop.shopName}</div>
             <div class="shop-card-count">${shop.itemCount} item${shop.itemCount === 1 ? '' : 's'}</div>
           `;
-          card.addEventListener('click', () => selectShop(shop.merchantEmail, shop.shopName));
+          card.addEventListener('click', () => selectShop(shop.merchantEmail, shop.shopName, shop.address));
           grid.appendChild(card);
         });
       } catch (err) {
@@ -424,10 +421,14 @@
       }
     }
 
-    function selectShop(merchantEmail, shopName) {
+    function selectShop(merchantEmail, shopName, shopAddress) {
       document.getElementById('shopSelectionView').style.display = 'none';
       document.getElementById('shopMenuView').style.display = 'block';
       document.getElementById('currentShopName').innerText = shopName;
+      // Pickup is wherever this shop actually is - already known the
+      // moment they pick it, so there's no reason to make them type it
+      // in again a few steps later.
+      document.getElementById('pickupInput').value = shopAddress ? `${shopName}, ${shopAddress}` : shopName;
       loadCustomerCatalog(merchantEmail);
     }
 
@@ -593,7 +594,6 @@
 
       const formData = new FormData(e.target);
       const payload = {
-        customerName: formData.get('customerName'),
         pickup: formData.get('pickup'),
         dropoff: formData.get('dropoff'),
         item: formData.get('item'),
