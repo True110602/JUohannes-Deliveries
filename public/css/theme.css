@@ -413,6 +413,11 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 }
 .shop-card-name{ font-weight: 600; font-size: 13.5px; }
 .shop-card-count{ font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+.shop-card-closed{ opacity: 0.55; }
+.shop-card-closed-badge{
+  margin-top: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: #ff5d7a;
+}
 
 @media (max-width: 480px){
   body{ padding: 14px; }
@@ -495,3 +500,34 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 .fx-referral-stat b{ display: block; font-size: 20px; }
 .fx-referral-stat span{ font-size: 11.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
 
+/* ---------- live order tracking map (customer order history) ---------- */
+.fx-track-map{
+  width: 100%; height: 220px; margin-top: 10px;
+  border-radius: var(--radius-sm); overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* ---------- call button (tel: link styled like a button) ---------- */
+.fx-call-btn{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: auto; padding: 10px 16px; margin-top: 10px;
+  border-radius: var(--radius-sm); text-decoration: none;
+  background: rgba(94,234,212,0.16); color: var(--text-0);
+  font-size: 13.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.fx-call-btn:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(94,234,212,0.4); }
+
+/* ---------- star rating picker ---------- */
+.fx-star-picker{ display: flex; gap: 4px; font-size: 22px; margin-top: 2px; }
+.fx-star{ cursor: pointer; color: var(--border-strong); transition: color .1s ease; }
+.fx-star:hover{ color: var(--accent); }
+.fx-star-filled{ color: #ffb020; }
+
+/* ---------- admin broadcast form ---------- */
+.fx-broadcast-form textarea{
+  width: 100%; resize: vertical; font-family: inherit; padding: 10px;
+  border-radius: var(--radius-sm); background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border); color: var(--text-0);
+}

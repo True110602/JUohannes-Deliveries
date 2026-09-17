@@ -96,6 +96,27 @@
         <div id="merchantApprovalsList"><span class="inline-spinner fx-spinner-light"></span>Loading merchants...</div>
       </div>
 
+      <div class="section fx-card fx-broadcast-form" style="flex-basis: 100%;">
+        <div class="fx-eyebrow">Announcements</div>
+        <h3 style="margin-top:0;">Broadcast a message</h3>
+        <p class="fx-muted" style="margin-top:0;">Sends as a notification to everyone in the chosen group, live if they're online and waiting for them if not.</p>
+        <form id="broadcastForm">
+          <label>Send to</label>
+          <select id="broadcastTarget">
+            <option value="all">Everyone</option>
+            <option value="customer">Customers only</option>
+            <option value="driver">Drivers only</option>
+            <option value="merchant">Merchants only</option>
+          </select>
+          <label>Title</label>
+          <input type="text" id="broadcastTitle" required placeholder="e.g. Scheduled maintenance tonight">
+          <label>Message</label>
+          <textarea id="broadcastMessage" required rows="3" placeholder="What do you want them to know?"></textarea>
+          <button type="submit" style="margin-top:10px; width:auto;">Send announcement</button>
+        </form>
+        <p id="broadcastStatus" class="fx-muted" style="margin-top:8px;"></p>
+      </div>
+
       <div class="section fx-card" style="flex-basis: 100%;">
         <div class="fx-eyebrow">Support</div>
         <h3 style="margin-top:0;">Support tickets</h3>
@@ -292,6 +313,40 @@
         alert('Could not approve merchant.');
       }
     }
+
+    // ---- Broadcast announcements ----
+    document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const status = document.getElementById('broadcastStatus');
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      setButtonLoading(submitBtn, true, 'Sending...');
+      status.innerText = '';
+
+      try {
+        const res = await authFetch(`${window.API_BASE}/api/admin/broadcast`, {
+          method: 'POST',
+          body: JSON.stringify({
+            targetRole: document.getElementById('broadcastTarget').value,
+            title: document.getElementById('broadcastTitle').value,
+            message: document.getElementById('broadcastMessage').value
+          })
+        });
+        const data = await res.json();
+        setButtonLoading(submitBtn, false);
+        if (data.success) {
+          status.style.color = '#4ade80';
+          status.innerText = `Sent to ${data.sentTo} recipient${data.sentTo === 1 ? '' : 's'}.`;
+          e.target.reset();
+        } else {
+          status.style.color = '#ff5d7a';
+          status.innerText = data.message || 'Could not send announcement.';
+        }
+      } catch (err) {
+        setButtonLoading(submitBtn, false);
+        status.style.color = '#ff5d7a';
+        status.innerText = 'Server error sending announcement.';
+      }
+    });
 
     // ---- Support tickets ----
     function ticketStatusOptions(current) {

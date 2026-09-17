@@ -94,6 +94,12 @@
           ? '<span class="fx-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b;">New assignment</span>'
           : '';
 
+        // Only shown once the driver has accepted - no reason to call a
+        // customer about a delivery they haven't committed to yet.
+        const callBtn = (o.driverAccepted === true && o.customerPhone)
+          ? '<a href="tel:' + o.customerPhone + '" class="fx-call-btn">📞 Call customer</a>'
+          : '';
+
         html += '<div class="fx-card" style="margin-top:10px;">'
           + newBadge
           + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
@@ -102,6 +108,7 @@
           + '<div>Customer: ' + o.customerName + '</div>'
           + '<div>Status: ' + o.status + '</div>'
           + btn
+          + callBtn
           + '</div>';
       }
       container.innerHTML = html;

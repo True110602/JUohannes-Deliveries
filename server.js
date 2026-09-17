@@ -15,6 +15,7 @@ const rateLimit = require('express-rate-limit');
 
 const User = require('./models/user');
 const DriverLocation = require('./models/DriverLocation');
+const Order = require('./models/Order');
 const { authenticateToken, JWT_SECRET } = require('./middleware/auth');
 const catalogRoutes = require('./routes/catalog');
 const orderRoutes = require('./routes/orders');
@@ -22,6 +23,8 @@ const merchantRoutes = require('./routes/merchant');
 const adminRoutes = require('./routes/admin');
 const accountRoutes = require('./routes/account');
 const supportRoutes = require('./routes/support');
+const notificationRoutes = require('./routes/notifications');
+const { notifyUser, notifyRole } = require('./utils/notify');
 
 const app = express();
 const server = http.createServer(app);
@@ -309,6 +312,13 @@ app.post('/api/register', registerLimiter, async (req, res) => {
       referredBy: referredByEmail
     });
 
+    if (chosenRole === 'merchant') {
+      notifyRole(io, User, 'admin', {
+        title: 'New merchant awaiting approval',
+        message: `${newUser.name} (${newUser.email}) just registered as a merchant and needs approval before their shop goes live.`
+      });
+    }
+
     const token = jwt.sign({ id: newUser._id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
@@ -484,12 +494,12 @@ app.use('/api/merchant', merchantRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
 app.post('/api/payments/paynow-result', async (req, res) => {
   try {
-    const Order = require('./models/Order');
     const { reference, status } = req.body;
     const match = /^Order-([a-f0-9]+)$/.exec(reference || '');
 
@@ -524,6 +534,21 @@ io.on('connection', async (socket) => {
     console.error('Error loading saved driver locations:', err);
   }
 
+  // Notifications are targeted per-person (see utils/notify.js), which
+  // means each socket needs to be in a "room" the server can address by
+  // that person's email. A client can't just claim to be any email they
+  // like here - the token is verified the same way authenticateToken
+  // verifies it on regular HTTP requests, so joining someone else's room
+  // requires an actual valid token for that account.
+  socket.on('register', (token) => {
+    if (!token) return;
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (!err && decoded && decoded.email) {
+        socket.join(decoded.email);
+      }
+    });
+  });
+
   socket.on('driver_connect', async (data) => {
     try {
       await DriverLocation.findOneAndUpdate(
@@ -533,6 +558,25 @@ io.on('connection', async (socket) => {
       );
       const allDrivers = await DriverLocation.find();
       io.emit('update_fleet', allDrivers.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
+
+      // Push this driver's position to the customer(s) whose order they're
+      // currently delivering, so the customer can watch it move on their
+      // own map. Only in-progress orders - a delivered/cancelled order
+      // shouldn't keep tracking anyone.
+      const activeOrders = await Order.find({
+        assignedDriver: data.driverId,
+        status: { $in: ['assigned', 'picked_up'] }
+      }).select('customerEmail');
+
+      activeOrders.forEach(order => {
+        if (order.customerEmail) {
+          io.to(order.customerEmail).emit('driver_position', {
+            orderId: order._id,
+            lat: data.lat,
+            lng: data.lng
+          });
+        }
+      });
     } catch (err) {
       console.error('Error saving driver location:', err);
     }

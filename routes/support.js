@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const SupportTicket = require('../models/SupportTicket');
+const User = require('../models/user');
 const { requireRole, JWT_SECRET } = require('../middleware/auth');
+const { notifyUser, notifyRole } = require('../utils/notify');
 
 // Same pattern as routes/orders.js's optionalAuth - a ticket should be
 // filable by a guest who hasn't even registered yet (e.g. "the app won't
@@ -43,6 +45,12 @@ router.post('/', optionalAuth, async (req, res) => {
     });
 
     await ticket.save();
+
+    notifyRole(req.app.get('io'), User, 'admin', {
+      title: 'New support ticket',
+      message: `${ticket.name || 'A guest'} reported: "${ticket.subject}"`
+    });
+
     res.status(201).json({ success: true, message: "Thanks - we've logged your report and will follow up.", ticketId: ticket._id });
   } catch (err) {
     console.error('Create support ticket error:', err);
@@ -78,6 +86,14 @@ router.patch('/:id', ...requireRole('admin'), async (req, res) => {
 
     const ticket = await SupportTicket.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+
+    if (status !== undefined && ticket.email) {
+      notifyUser(req.app.get('io'), ticket.email, {
+        title: 'Your support ticket was updated',
+        message: `"${ticket.subject}" is now ${status.replace('_', ' ')}.`
+      });
+    }
+
     res.json({ success: true, ticket });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

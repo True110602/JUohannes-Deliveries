@@ -13,6 +13,17 @@ const userSchema = new mongoose.Schema({
   // Merchant-only: the storefront name shown to customers browsing shops.
   // Falls back to the merchant's email on the frontend when left blank.
   shopName: { type: String, default: '' },
+  // Merchant-only: where the shop physically is, used to calculate the
+  // real pickup->dropoff distance the delivery fee is based on. Null
+  // until the merchant sets it on the map in merchant.html; orders from
+  // a shop with no coordinates fall back to a flat fee (see
+  // FALLBACK_DELIVERY_FEE in routes/orders.js).
+  shopLat: { type: Number, default: null },
+  shopLng: { type: Number, default: null },
+  // Merchant-only: lets a merchant temporarily stop taking orders
+  // (closed for the day, out of stock, on holiday) without deleting
+  // their catalog or being un-approved by an admin.
+  isOpen: { type: Boolean, default: true },
   bankDetails: {
     bankName: { type: String, default: '' },
     accountName: { type: String, default: '' },

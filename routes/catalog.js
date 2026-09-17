@@ -16,7 +16,7 @@ router.get('/shops', async (req, res) => {
     // hasn't been approved yet shouldn't be visible to customers even if
     // they've added items.
     const merchants = await User.find({ email: { $in: merchantEmails }, approved: true })
-      .select('email shopName profilePicUrl');
+      .select('email shopName profilePicUrl address isOpen');
     const merchantByEmail = new Map(merchants.map(m => [m.email, m]));
     const approvedEmails = merchants.map(m => m.email);
 
@@ -33,6 +33,10 @@ router.get('/shops', async (req, res) => {
         shopName: (merchant && merchant.shopName) || email,
         profilePicUrl: (merchant && merchant.profilePicUrl) || '',
         address: (merchant && merchant.address) || '',
+        // Merchants can temporarily close without being un-approved or
+        // deleting their catalog - customers still see the shop, but
+        // can't order from it right now.
+        isOpen: merchant ? merchant.isOpen !== false : true,
         itemCount: countByEmail.get(email) || 0
       };
     });

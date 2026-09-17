@@ -10,7 +10,7 @@ const upload = require('../middleware/upload');
 // details, persisted server-side so they follow the account across devices.
 router.get('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('email shopName profilePicUrl bankDetails');
+    const user = await User.findById(req.user.id).select('email shopName profilePicUrl bankDetails shopLat shopLng isOpen');
     if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
     res.json({ success: true, profile: user });
   } catch (err) {
@@ -20,15 +20,27 @@ router.get('/profile', ...requireRole('merchant'), async (req, res) => {
 
 router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const { shopName, profilePicUrl, bankName, accountName, accountNumber } = req.body;
+    const { shopName, profilePicUrl, bankName, accountName, accountNumber, shopLat, shopLng, isOpen } = req.body;
     const update = {};
     if (shopName !== undefined) update.shopName = shopName;
     if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
     if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
       update.bankDetails = { bankName, accountName, accountNumber };
     }
+    // Shop coordinates drive the per-kilometre delivery fee (see
+    // calculateDelivery in routes/orders.js) - without them, orders from
+    // this shop fall back to a flat fee instead of real distance pricing.
+    if (shopLat !== undefined && shopLng !== undefined) {
+      const lat = parseFloat(shopLat);
+      const lng = parseFloat(shopLng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        update.shopLat = lat;
+        update.shopLng = lng;
+      }
+    }
+    if (typeof isOpen === 'boolean') update.isOpen = isOpen;
 
-    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email shopName profilePicUrl bankDetails');
+    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email shopName profilePicUrl bankDetails shopLat shopLng isOpen');
     res.json({ success: true, profile: user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

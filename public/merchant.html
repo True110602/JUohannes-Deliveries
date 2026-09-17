@@ -31,6 +31,8 @@
   <title>Johannes Deliveries - Merchant Dashboard</title>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
+  <script src="/js/geo-helpers.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/theme.css" />
   <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
   <style>
@@ -84,6 +86,22 @@
         <form id="profileForm">
           <label>Shop name</label>
           <input type="text" id="shopName" placeholder="e.g. Bhekinkosi's Fast Food">
+
+          <label>Shop Status</label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+            <span class="fx-switch">
+              <input type="checkbox" id="shopIsOpen" checked>
+              <span class="fx-switch-track"></span>
+            </span>
+            <span id="shopIsOpenLabel">Open for orders</span>
+          </label>
+
+          <label>Shop Location</label>
+          <p class="fx-muted" style="margin-top:-6px; font-size:12.5px;">Click the map to set exactly where customers pick up from - this is what your $1/km delivery fee is calculated from. Without it, your orders default to a flat delivery fee instead of your real distance.</p>
+          <button type="button" id="useMyLocationBtnMerchant" class="fx-btn-muted" style="margin-bottom: 8px;">Use My Location</button>
+          <div id="shopLocationMap" style="width:100%; height:260px; margin-bottom:15px;"></div>
+          <input type="hidden" id="shopLat">
+          <input type="hidden" id="shopLng">
 
           <label>Profile picture</label>
           <div class="fx-drop-zone" id="profilePicDropZone">
@@ -244,10 +262,15 @@
           document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
           document.getElementById('accountName').value = (p.bankDetails && p.bankDetails.accountName) || '';
           document.getElementById('accountNumber').value = (p.bankDetails && p.bankDetails.accountNumber) || '';
+          document.getElementById('shopIsOpen').checked = p.isOpen !== false;
+          updateShopOpenLabel();
           if (p.profilePicUrl) {
             const preview = document.getElementById('profilePicPreview');
             preview.src = p.profilePicUrl;
             preview.classList.add('fx-has-image');
+          }
+          if (typeof p.shopLat === 'number' && typeof p.shopLng === 'number') {
+            setShopLocation(p.shopLat, p.shopLng);
           }
           if (!p.approved) {
             document.getElementById('approvalBanner').style.display = 'block';
@@ -257,6 +280,12 @@
         console.error('Could not load profile', err);
       }
     }
+
+    function updateShopOpenLabel() {
+      document.getElementById('shopIsOpenLabel').innerText =
+        document.getElementById('shopIsOpen').checked ? 'Open for orders' : 'Closed - not accepting orders';
+    }
+    document.getElementById('shopIsOpen').addEventListener('change', updateShopOpenLabel);
 
     async function loadStats() {
       try {
@@ -337,7 +366,10 @@
             profilePicUrl: document.getElementById('profilePicUrl').value,
             bankName: document.getElementById('bankName').value,
             accountName: document.getElementById('accountName').value,
-            accountNumber: document.getElementById('accountNumber').value
+            accountNumber: document.getElementById('accountNumber').value,
+            shopLat: document.getElementById('shopLat').value || undefined,
+            shopLng: document.getElementById('shopLng').value || undefined,
+            isOpen: document.getElementById('shopIsOpen').checked
           })
         });
         const data = await res.json();
@@ -414,6 +446,50 @@
     initSupportWidget();
     initNotificationCenter();
     renderNavAvatar('navAvatarContainer');
+  </script>
+
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script>
+    // --- Shop location map ---
+    let shopMap = null;
+    let shopMarker = null;
+
+    function setShopLocation(lat, lng) {
+      document.getElementById('shopLat').value = lat;
+      document.getElementById('shopLng').value = lng;
+      if (!shopMap) return; // map may not exist yet if this runs before it's created below
+      if (shopMarker) shopMap.removeLayer(shopMarker);
+      shopMarker = L.marker([lat, lng]).addTo(shopMap);
+      shopMap.setView([lat, lng], 16);
+    }
+
+    shopMap = L.map('shopLocationMap').setView([-20.1350, 28.5800], 13);
+    addConfiguredTileLayer(shopMap);
+    shopMap.on('click', (e) => setShopLocation(e.latlng.lat, e.latlng.lng));
+
+    // loadProfile() (called above, before this script block existed) may
+    // have already stored the saved shopLat/shopLng into the hidden
+    // inputs via setShopLocation() while shopMap was still null - place
+    // the marker now that the map actually exists, using those values
+    // rather than fetching the profile a second time.
+    const savedLat = document.getElementById('shopLat').value;
+    const savedLng = document.getElementById('shopLng').value;
+    if (savedLat && savedLng) {
+      setShopLocation(parseFloat(savedLat), parseFloat(savedLng));
+    }
+
+    document.getElementById('useMyLocationBtnMerchant').addEventListener('click', async (e) => {
+      const btn = e.target;
+      setButtonLoading(btn, true, 'Locating...');
+      try {
+        const { lat, lng } = await getCurrentLocation();
+        setShopLocation(lat, lng);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setButtonLoading(btn, false);
+      }
+    });
   </script>
 </body>
 </html>

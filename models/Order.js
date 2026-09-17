@@ -42,7 +42,22 @@ const orderSchema = new mongoose.Schema({
   paymentStatus: { type: String, default: 'n/a' },
   paynowPollUrl: { type: String, default: null },
   paynowInstructions: { type: String, default: null },
+  // What the driver earns for this delivery: the distance-based delivery
+  // fee plus 100% of the tip. Drivers used to get a 10% cut of the order
+  // subtotal instead - that was replaced by per-kilometre pay so a long
+  // trip for a cheap order is no longer paid worse than a short trip for
+  // an expensive one.
   driverCommission: { type: Number, default: 0 },
+  // Distance between the shop and the drop-off, and the fee derived from
+  // it. distanceKm is null when the shop hasn't set its coordinates yet,
+  // in which case deliveryFee falls back to a flat amount.
+  distanceKm: { type: Number, default: null },
+  deliveryFee: { type: Number, default: 0 },
+  // Live driver position for this specific order, so the customer can
+  // watch their delivery move. Updated over Socket.IO while the order is
+  // in progress; null before a driver has reported any position.
+  driverLat: { type: Number, default: null },
+  driverLng: { type: Number, default: null },
   // New: what the platform itself keeps from this order (previously
   // undefined anywhere - only the driver's cut was ever calculated).
   platformCommission: { type: Number, default: 0 },
@@ -60,7 +75,14 @@ const orderSchema = new mongoose.Schema({
   // Set once this order has triggered the referrer's reward, so a status
   // flip back and forth (e.g. delivered -> cancelled -> delivered again,
   // however unlikely) can never pay out twice for the same order.
-  referralRewardGranted: { type: Boolean, default: false }
+  referralRewardGranted: { type: Boolean, default: false },
+  // Customer's rating of this delivery, 1-5, plus optional comment. One
+  // rating per order (not per shop/driver) so a review is always tied to
+  // a real completed transaction rather than being postable by anyone.
+  // shopRating covers the merchant, driverRating the driver.
+  shopRating: { type: Number, min: 1, max: 5, default: null },
+  driverRating: { type: Number, min: 1, max: 5, default: null },
+  ratingComment: { type: String, default: '' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);
