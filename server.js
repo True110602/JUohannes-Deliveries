@@ -171,6 +171,8 @@ if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
   console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 app.set('paynow', paynow);
+app.set('transporter', transporter);
+app.set('emailConfigured', EMAIL_CONFIGURED);
 
 // Generates a short, human-shareable referral code (e.g. "BHEKI4821") and
 // retries on the rare collision - codes are unique on the User model, so
