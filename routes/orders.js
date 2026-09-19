@@ -4,6 +4,7 @@ const Order = require('../models/Order');
 const User = require('../models/user');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { notifyUser, notifyRole } = require('../utils/notify');
+const upload = require('../middleware/upload');
 
 // Drivers are paid per kilometre travelled (shop -> drop-off) rather
 // than a percentage of the order. A 10% cut used to mean a long trip for
@@ -459,7 +460,15 @@ router.patch('/:id/cancel', authenticateToken, async (req, res) => {
   }
 });
 
-router.patch('/:id/status', ...requireRole('admin', 'driver'), async (req, res) => {
+router.patch('/:id/status', ...requireRole('admin', 'driver'), (req, res, next) => {
+  // multer only kicks in for an actual multipart/form-data request (a
+  // driver attaching a photo); a plain JSON status change from admin
+  // passes straight through untouched.
+  upload.single('photo')(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message || 'Photo upload failed.' });
+    next();
+  });
+}, async (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'];
@@ -471,6 +480,21 @@ router.patch('/:id/status', ...requireRole('admin', 'driver'), async (req, res) 
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     order.status = status;
+
+    // Photo proof of handoff - only meaningful (and only accepted) at the
+    // two points a driver physically has the order in hand.
+    let photoCaptured = false;
+    if (req.file && (status === 'picked_up' || status === 'delivered')) {
+      const photoUrl = `/uploads/${req.file.filename}`;
+      if (status === 'picked_up') {
+        order.pickupPhotoUrl = photoUrl;
+        order.pickupPhotoAt = new Date();
+      } else {
+        order.deliveryPhotoUrl = photoUrl;
+        order.deliveryPhotoAt = new Date();
+      }
+      photoCaptured = true;
+    }
 
     // Referral reward: fires once, the first time one of a referred
     // customer's orders actually reaches "delivered" - not on placement,
@@ -502,11 +526,19 @@ router.patch('/:id/status', ...requireRole('admin', 'driver'), async (req, res) 
       pending: 'pending', assigned: 'assigned to a driver', picked_up: 'picked up',
       delivered: 'delivered', cancelled: 'cancelled', failed: 'marked as failed'
     };
+    const photoNote = photoCaptured ? ' A photo was taken as proof.' : '';
     notifyUser(io, order.customerEmail, {
       title: 'Order status updated',
-      message: `Your order is now ${STATUS_LABELS[status] || status}.`,
+      message: `Your order is now ${STATUS_LABELS[status] || status}.${photoNote}`,
       relatedOrderId: order._id
     });
+    if (status === 'picked_up' || status === 'delivered') {
+      notifyRole(io, User, 'admin', {
+        title: `Order ${STATUS_LABELS[status]}`,
+        message: `Order #${order._id.toString().slice(-6)} (${order.customerName}) was just ${STATUS_LABELS[status]} by ${order.assignedDriver || 'a driver'}.${photoNote}`,
+        relatedOrderId: order._id
+      });
+    }
     if (referrerToNotify) {
       notifyUser(io, referrerToNotify, {
         title: 'You earned referral credit!',
