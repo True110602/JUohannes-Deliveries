@@ -235,7 +235,12 @@
           <td>${o.customerName}<div class="fx-muted" style="font-size:11.5px;">${o.pickup} &rarr; ${o.dropoff}</div></td>
           <td>${o.item || '<i>-</i>'}</td>
           <td>$${(o.amount || 0).toFixed(2)}</td>
-          <td>${statusBadge(o.status)}</td>
+          <td>${statusBadge(o.status)}${(o.pickupPhotoUrl || o.deliveryPhotoUrl) ? `
+            <div style="display:flex; gap:4px; margin-top:4px;">
+              ${o.pickupPhotoUrl ? `<img src="${o.pickupPhotoUrl.startsWith('http') ? o.pickupPhotoUrl : window.API_BASE + o.pickupPhotoUrl}" title="Pickup photo" style="width:32px; height:32px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="window.open(this.src,'_blank')">` : ''}
+              ${o.deliveryPhotoUrl ? `<img src="${o.deliveryPhotoUrl.startsWith('http') ? o.deliveryPhotoUrl : window.API_BASE + o.deliveryPhotoUrl}" title="Delivery photo" style="width:32px; height:32px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="window.open(this.src,'_blank')">` : ''}
+            </div>
+          ` : ''}</td>
           <td>${o.assignedDriver || '<i>Unassigned</i>'}${driverResponseBadge(o)}</td>
           <td>
             <select onchange="assignDriver('${o._id}', this)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
