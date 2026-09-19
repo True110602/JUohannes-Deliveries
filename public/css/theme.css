@@ -1,533 +1,463 @@
-/* ==========================================================
-   Johannes Deliveries — shared "futuristic" design system
-   Loaded by every page. Keep selectors generic/utility-based
-   so each page's markup can opt in without a rewrite.
-   ========================================================== */
+// Shared UI helpers used across every page (button loading states,
+// lightweight toast notifications). Previously this file didn't
+// actually exist under this name — pages loaded "/js/ui-helpers.js"
+// (hyphen) while the real file on disk was "ui helpers.js" (space),
+// so the request 404'd silently and setButtonLoading() was undefined
+// wherever it was called.
 
-/* Google Fonts import moved to fonts.css, loaded conditionally per-page -
-   see that file's header comment for why. */
+function setButtonLoading(button, isLoading, loadingText) {
+  if (!button) return;
 
-:root{
-  --bg-0:#05070d;
-  --bg-1:#0a0e1a;
-  --bg-2:#101526;
-  --panel: rgba(18, 23, 41, 0.72);
-  --panel-solid:#121729;
-  --border: rgba(120, 170, 255, 0.16);
-  --border-strong: rgba(120, 170, 255, 0.32);
-  --text-0:#eaf0ff;
-  --text-1:#a9b4d0;
-  --text-2:#6c7794;
-  --accent:#5eead4;       /* teal */
-  --accent-2:#8b7bff;     /* violet */
-  --accent-3:#ff6bd6;     /* magenta */
-  --accent-warn:#ffb454;
-  --accent-danger:#ff5d7a;
-  --accent-ok:#4ade80;
-  --grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --shadow-glow: 0 0 0 1px var(--border), 0 20px 60px -20px rgba(94,234,212,0.15), 0 8px 24px -8px rgba(0,0,0,0.6);
-  font-size: 16px;
+  if (isLoading) {
+    if (button.dataset.fxOriginalHtml === undefined) {
+      button.dataset.fxOriginalHtml = button.innerHTML;
+    }
+    button.disabled = true;
+    button.innerHTML = `<span class="inline-spinner"></span>${loadingText || 'Please wait...'}`;
+  } else {
+    button.disabled = false;
+    if (button.dataset.fxOriginalHtml !== undefined) {
+      button.innerHTML = button.dataset.fxOriginalHtml;
+      delete button.dataset.fxOriginalHtml;
+    }
+  }
 }
 
-*{ box-sizing: border-box; }
+// Wires up a drag-and-drop / click-to-browse image upload zone.
+// dropZoneId: the container div (also the click target)
+// fileInputId: the hidden <input type="file"> inside it
+// previewImgId: an <img> element used to preview the uploaded picture
+// hiddenUrlInputId: a hidden input that stores the resulting URL, so
+//   existing form submission code that reads it doesn't need to change
+// onUploaded(url): optional callback fired after a successful upload
+// uploadUrl: which endpoint receives the file - defaults to the
+//   merchant-only one (existing callers didn't specify this), but
+//   account.html passes /api/account/upload-image so every role can
+//   upload their own profile picture, not just merchants.
+function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlInputId, onUploaded, uploadUrl }) {
+  const zone = document.getElementById(dropZoneId);
+  const input = document.getElementById(fileInputId);
+  const preview = previewImgId ? document.getElementById(previewImgId) : null;
+  const hiddenInput = hiddenUrlInputId ? document.getElementById(hiddenUrlInputId) : null;
+  const endpoint = uploadUrl || '/api/merchant/upload-image';
+  if (!zone || !input) return;
 
-html, body{
-  height: 100%;
-}
+  function showPreview(url) {
+    if (preview && url) {
+      preview.src = url;
+      preview.classList.add('fx-has-image');
+    }
+  }
 
-body{
-  margin: 0;
-  font-family: 'Space Grotesk', 'Rajdhani', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: var(--text-0);
-  background:
-    radial-gradient(1100px 600px at 15% -10%, rgba(94,234,212,0.10), transparent 60%),
-    radial-gradient(900px 500px at 110% 10%, rgba(139,123,255,0.14), transparent 55%),
-    radial-gradient(700px 700px at 50% 120%, rgba(255,107,214,0.08), transparent 60%),
-    var(--bg-0);
-  min-height: 100vh;
-  padding: 24px;
-  line-height: 1.5;
-}
+  // If a URL is already set (e.g. loaded from a saved profile), show it.
+  if (hiddenInput && hiddenInput.value) showPreview(hiddenInput.value);
 
-/* faint grid overlay for the "futuristic" feel */
-body::before{
-  content:'';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(120,170,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(120,170,255,0.05) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 20%, black 40%, transparent 90%);
-  pointer-events: none;
-  z-index: 0;
-}
+  async function uploadFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please choose an image file.', 'error');
+      return;
+    }
 
-h1,h2,h3,h4{
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  margin: 0 0 6px 0;
-}
+    const zoneTextEl = zone.querySelector('.fx-drop-zone-text');
+    const originalText = zoneTextEl ? zoneTextEl.innerHTML : null;
+    if (zoneTextEl) zoneTextEl.innerHTML = '<span class="inline-spinner fx-spinner-light"></span>Uploading...';
 
-a{ color: var(--accent); }
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await authFetch(`${window.API_BASE}${endpoint}`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        const fullUrl = data.url.startsWith('http') ? data.url : `${window.API_BASE}${data.url}`;
+        if (hiddenInput) hiddenInput.value = fullUrl;
+        showPreview(fullUrl);
+        if (onUploaded) onUploaded(fullUrl);
+      } else {
+        showToast(data.message || 'Upload failed.', 'error');
+      }
+    } catch (err) {
+      showToast('Server error uploading image.', 'error');
+    } finally {
+      if (zoneTextEl && originalText !== null) zoneTextEl.innerHTML = originalText;
+    }
+  }
 
-/* ---------- layout helpers ---------- */
-.fx-shell{
-  position: relative;
-  z-index: 1;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.fx-center{
-  min-height: calc(100vh - 48px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => uploadFile(input.files[0]));
 
-/* ---------- brand ---------- */
-.fx-brand{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 22px;
-}
-.fx-brand .fx-logo-mark, .fx-logo-mark{
-  width: 38px; height: 38px;
-  border-radius: 11px;
-  display: block;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-/* fallback badge only used if the logo image itself fails to load */
-img.fx-logo-mark{
-  background: transparent;
-  filter: drop-shadow(0 0 14px rgba(0,123,255,0.35));
-}
-.fx-brand .fx-brand-text{
-  font-size: 15px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--text-1);
-}
-.fx-brand .fx-brand-text b{ color: var(--text-0); letter-spacing: 3px; }
-
-/* ---------- glass card / panel ---------- */
-.fx-card{
-  position: relative;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-glow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  padding: 28px;
-}
-.fx-card::before{
-  content:'';
-  position: absolute; inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(94,234,212,0.5), rgba(139,123,255,0.15) 40%, transparent 70%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
-}
-.fx-eyebrow{
-  font-size: 12px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.fx-sub{ color: var(--text-1); font-size: 14px; margin-top: 0; }
-
-/* ---------- form elements ---------- */
-label{
-  display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--text-1);
-  margin: 14px 0 6px;
-}
-input, select, textarea{
-  width: 100%;
-  padding: 12px 14px;
-  background: rgba(6,10,20,0.55);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-0);
-  font-family: inherit;
-  font-size: 14.5px;
-  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-  box-sizing: border-box;
-}
-input::placeholder, textarea::placeholder{ color: var(--text-2); }
-input:focus, select:focus, textarea:focus{
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(94,234,212,0.15);
-  background: rgba(6,10,20,0.8);
-}
-input[readonly]{ opacity: 0.6; cursor: not-allowed; }
-
-button, .fx-btn{
-  width: 100%;
-  padding: 13px 18px;
-  margin-top: 4px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 14.5px;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  color: #06121a;
-  background: var(--grad);
-  box-shadow: 0 8px 24px -8px rgba(94,234,212,0.45);
-  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
-}
-button:hover, .fx-btn:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(94,234,212,0.55); }
-button:active, .fx-btn:active{ transform: translateY(0); }
-button:disabled{ opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
-
-button.fx-btn-ghost, .fx-btn-ghost{
-  background: transparent;
-  color: var(--text-1);
-  border: 1px solid var(--border-strong);
-  box-shadow: none;
-}
-button.fx-btn-ghost:hover{ color: var(--text-0); border-color: var(--accent); box-shadow: none; }
-
-button.fx-btn-danger{ background: linear-gradient(135deg, #ff5d7a, #ff8b5d); box-shadow: 0 8px 24px -8px rgba(255,93,122,0.5); }
-button.fx-btn-muted{ background: rgba(120,140,180,0.18); color: var(--text-0); box-shadow: none; }
-button.fx-btn-sm{ width: auto; padding: 7px 12px; font-size: 12.5px; margin-top: 0; }
-
-.fx-link{
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
-}
-.fx-link:hover{ text-decoration: underline; }
-
-.fx-row-end{ display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
-.fx-divider{ border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
-.fx-muted{ color: var(--text-1); font-size: 13.5px; }
-.fx-center-text{ text-align: center; }
-
-/* ---------- status / feedback ---------- */
-#loginStatus, #regStatus, #resetModalStatus, .fx-status{
-  margin-top: 14px;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-align: center;
-}
-.fx-alert{
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  font-size: 13.5px;
-  font-weight: 500;
-  border: 1px solid transparent;
-}
-.fx-alert-info{ background: rgba(94,234,212,0.10); border-color: rgba(94,234,212,0.35); color: var(--accent); }
-.fx-alert-warn{ background: rgba(255,180,84,0.10); border-color: rgba(255,180,84,0.35); color: var(--accent-warn); }
-.fx-alert-danger{ background: rgba(255,93,122,0.10); border-color: rgba(255,93,122,0.35); color: var(--accent-danger); }
-.fx-alert-ok{ background: rgba(74,222,128,0.10); border-color: rgba(74,222,128,0.35); color: var(--accent-ok); }
-
-.error{ color: var(--accent-danger); font-size: 13.5px; text-align: center; margin-bottom: 10px; font-weight: 600; }
-.success{ color: var(--accent-ok); font-size: 13.5px; text-align: center; margin-bottom: 10px; font-weight: 600; }
-
-/* status badges (orders) */
-.status-badge{ padding: 3px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; display: inline-block; }
-.status-pending{ background: rgba(255,180,84,0.15); color: var(--accent-warn); }
-.status-assigned{ background: rgba(139,123,255,0.18); color: #b9aeff; }
-.status-picked_up{ background: rgba(94,234,212,0.15); color: var(--accent); }
-.status-delivered{ background: rgba(74,222,128,0.15); color: var(--accent-ok); }
-.status-cancelled, .status-failed{ background: rgba(255,93,122,0.15); color: var(--accent-danger); }
-
-/* ---------- modal ---------- */
-.fx-modal-backdrop{
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(4,6,12,0.72);
-  backdrop-filter: blur(6px);
-  align-items: center; justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-.fx-modal-backdrop.fx-open{ display: flex; }
-.fx-modal{
-  width: 100%; max-width: 420px;
+  ['dragover', 'dragenter'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      zone.classList.add('fx-drop-active');
+    });
+  });
+  ['dragleave', 'dragend', 'drop'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      zone.classList.remove('fx-drop-active');
+    });
+  });
+  zone.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    uploadFile(file);
+  });
 }
 
-/* ---------- nav / top bar ---------- */
-.fx-nav{
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 20px; gap: 12px; flex-wrap: wrap;
-}
-.fx-nav .fx-nav-title{ display: flex; align-items: center; gap: 10px; }
-.fx-pill{
-  padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
-  background: rgba(94,234,212,0.12); color: var(--accent); border: 1px solid rgba(94,234,212,0.3);
-  letter-spacing: 0.4px;
+// --- Data Saver mode ---
+// A visitor-controlled setting (stored locally, not per-account) that
+// pages can check before doing anything data-heavy: loading the Leaflet
+// map/tiles, fetching item/shop photos, or pulling in the Google Fonts
+// stylesheet (see the inline loader script in each page's <head>).
+// Kept dead simple (one flag, no server round-trip) since the entire
+// point is to work well on a weak/expensive connection.
+// Fetches the server's tile-provider config (see GET /api/map-config) and
+// adds the matching Leaflet tile layer to the given map. Centralized here
+// so all three map pages (customer/admin/driver) stay in sync and pick up
+// a MAPTILER_API_KEY the moment it's set server-side, with no frontend
+// changes needed. The map itself is created synchronously by the caller
+// beforehand - this only adds the tile layer, so markers/click-handlers
+// wired right after creating the map don't have to wait on this fetch.
+async function addConfiguredTileLayer(map) {
+  // Same CARTO fallback the server itself uses when no key is set - keeps
+  // the map usable even if the config request fails OR comes back with an
+  // unexpected/empty shape (e.g. a sleeping/misconfigured backend).
+  const FALLBACK_CFG = {
+    tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    maxZoom: 19
+  };
+
+  let cfg;
+  try {
+    const res = await fetch(`${window.API_BASE || ''}/api/map-config`);
+    const data = await res.json();
+    // Guard against a 200 response that isn't actually usable (missing
+    // field, null body, wrong shape) - without this, a bad response here
+    // silently skips the tile layer entirely and leaves the map showing
+    // nothing but Leaflet's own default attribution credit.
+    cfg = (data && typeof data.tileUrlTemplate === 'string') ? data : FALLBACK_CFG;
+  } catch (err) {
+    cfg = FALLBACK_CFG;
+  }
+
+  try {
+    L.tileLayer(cfg.tileUrlTemplate, {
+      maxZoom: cfg.maxZoom || 19,
+      subdomains: cfg.subdomains || undefined,
+      attribution: cfg.attribution
+    }).addTo(map);
+  } catch (err) {
+    // Last-resort safety net so a bad cfg never leaves the map blank.
+    L.tileLayer(FALLBACK_CFG.tileUrlTemplate, {
+      maxZoom: FALLBACK_CFG.maxZoom,
+      subdomains: FALLBACK_CFG.subdomains,
+      attribution: FALLBACK_CFG.attribution
+    }).addTo(map);
+  }
 }
 
-/* ---------- dashboard grid ---------- */
-.dashboard-grid{ display: flex; gap: 20px; flex-wrap: wrap; position: relative; z-index: 1; }
-.section{ flex: 1; min-width: 320px; }
-
-/* ---------- table ---------- */
-table{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13.5px; }
-th, td{ padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); }
-th{ color: var(--text-1); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }
-tr:hover td{ background: rgba(120,170,255,0.04); }
-.fx-table-wrap{ overflow-x: auto; }
-
-/* ---------- map ---------- */
-#map{ border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; filter: saturate(0.35) brightness(0.85) hue-rotate(180deg) invert(1); }
-.leaflet-popup-content-wrapper{ background: var(--panel-solid); color: var(--text-0); border-radius: 10px; }
-.leaflet-popup-tip{ background: var(--panel-solid); }
-.leaflet-container a.leaflet-popup-close-button{ color: var(--text-1); }
-
-/* ---------- misc ---------- */
-.status-box{ padding: 12px; border-radius: var(--radius-sm); text-align: center; font-weight: 700; background: rgba(120,140,180,0.12); border: 1px solid var(--border); }
-.catalog-item{ padding: 12px; margin-top: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(120,140,180,0.05); }
-.catalog-item-top{ display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.catalog-thumb{ width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
-.catalog-desc{ font-size: 12.5px; color: var(--text-1); margin-top: 4px; }
-.catalog-options label{ font-size: 12px; margin-top: 8px; }
-.add-to-order-btn{ width: auto; padding: 7px 14px; font-size: 12.5px; margin-top: 8px; }
-#orderSummary{ background: rgba(94,234,212,0.06); border: 1px solid rgba(94,234,212,0.2); border-radius: var(--radius-sm); padding: 12px; margin-top: 10px; margin-bottom: 15px; font-size: 13.5px; }
-#orderSummary ul{ margin: 6px 0 0 18px; padding: 0; }
-
-/* inline spinner (used by ui-helpers.js setButtonLoading + loading text) */
-.inline-spinner{
-  display: inline-block;
-  width: 14px; height: 14px;
-  margin-right: 8px;
-  border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: #06121a;
-  border-radius: 50%;
-  animation: fx-spin .7s linear infinite;
-  vertical-align: -2px;
-}
-.inline-spinner.fx-spinner-light{
-  border: 2px solid rgba(94,234,212,0.25);
-  border-top-color: var(--accent);
-}
-@keyframes fx-spin{ to{ transform: rotate(360deg); } }
-
-/* toast (from ui-helpers.js showToast) */
-.fx-toast-stack{
-  position: fixed; top: 18px; right: 18px; z-index: 2000;
-  display: flex; flex-direction: column; gap: 10px;
-  max-width: 320px;
-}
-.fx-toast{
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--panel-solid);
-  border: 1px solid var(--border-strong);
-  color: var(--text-0);
-  font-size: 13px;
-  box-shadow: var(--shadow-glow);
-  animation: fx-toast-in .18s ease;
-}
-.fx-toast.ok{ border-color: rgba(74,222,128,0.4); }
-.fx-toast.err{ border-color: rgba(255,93,122,0.4); }
-@keyframes fx-toast-in{ from{ opacity:0; transform: translateY(-6px);} to{opacity:1; transform:none;} }
-
-/* ---------- image upload drop zone (merchant profile / catalog items) ---------- */
-.fx-drop-zone{
-  border: 1.5px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: rgba(6,10,20,0.35);
-  padding: 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color .15s ease, background .15s ease;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  justify-content: center;
-}
-.fx-drop-zone:hover, .fx-drop-zone.fx-drop-active{
-  border-color: var(--accent);
-  background: rgba(94,234,212,0.06);
-}
-.fx-drop-zone input[type="file"]{ display: none; }
-.fx-drop-zone-text{ font-size: 13px; color: var(--text-1); }
-.fx-drop-zone-text b{ color: var(--accent); }
-.fx-drop-preview{
-  width: 56px; height: 56px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  display: none;
-}
-.fx-drop-preview.fx-has-image{ display: block; }
-.fx-drop-preview-round{ border-radius: 50%; }
-
-/* ---------- shop picker (customer catalog) ---------- */
-/* Horizontal sliding row of shop tiles - swipe/scroll on touch devices,
-   scrollbar drag or shift+wheel on desktop. scroll-snap keeps each tile
-   landing cleanly instead of stopping mid-card. */
-.shop-grid{
-  display: flex;
-  gap: 12px;
-  margin-top: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 6px; /* room for the scrollbar so it doesn't sit on the cards */
-  -webkit-overflow-scrolling: touch;
-}
-.shop-grid::-webkit-scrollbar{ height: 6px; }
-.shop-grid::-webkit-scrollbar-thumb{ background: var(--border-strong); border-radius: 999px; }
-.shop-card{
-  flex: 0 0 128px;
-  scroll-snap-align: start;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(120,140,180,0.05);
-  padding: 14px 10px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color .15s ease, transform .12s ease;
-}
-.shop-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
-.shop-card img{
-  width: 48px; height: 48px;
-  object-fit: cover;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  margin: 0 auto 8px;
-  display: block;
-}
-.shop-card-name{ font-weight: 600; font-size: 13.5px; }
-.shop-card-count{ font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
-.shop-card-closed{ opacity: 0.55; }
-.shop-card-closed-badge{
-  margin-top: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.5px; color: #ff5d7a;
+function isDataSaverOn() {
+  return localStorage.getItem('fx_data_saver') === 'on';
 }
 
-@media (max-width: 480px){
-  body{ padding: 14px; }
-  .fx-card{ padding: 20px; }
+function setDataSaver(on) {
+  localStorage.setItem('fx_data_saver', on ? 'on' : 'off');
 }
 
-/* ---------- guest browsing banner (customer.html) ---------- */
-.fx-guest-banner{
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 12px 16px; margin-bottom: 16px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  background: rgba(139,123,255,0.08);
-  font-size: 13.5px;
+// Renders a toggle switch into the given container id, wired to
+// isDataSaverOn()/setDataSaver(). onChange(isOn) fires after the value is
+// saved - most pages use it to just reload(), since disabling e.g. the
+// map only takes effect on next render.
+function renderDataSaverToggle(containerId, onChange) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const on = isDataSaverOn();
+  container.innerHTML = `
+    <label class="fx-data-saver-toggle">
+      <span class="fx-switch">
+        <input type="checkbox" id="fxDataSaverCheckbox" ${on ? 'checked' : ''}>
+        <span class="fx-switch-track"></span>
+      </span>
+      Data Saver
+    </label>
+  `;
+  document.getElementById('fxDataSaverCheckbox').addEventListener('change', (e) => {
+    setDataSaver(e.target.checked);
+    if (onChange) onChange(e.target.checked);
+  });
 }
 
-/* ---------- data saver toggle ---------- */
-.fx-data-saver-toggle{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-1); }
-.fx-switch{ position: relative; display: inline-block; width: 38px; height: 21px; flex: none; }
-.fx-switch input{ opacity: 0; width: 0; height: 0; }
-.fx-switch-track{
-  position: absolute; cursor: pointer; inset: 0;
-  background: rgba(120,170,255,0.18); border: 1px solid var(--border-strong);
-  border-radius: 999px; transition: background .15s ease;
-}
-.fx-switch-track::before{
-  content: ""; position: absolute; height: 15px; width: 15px; left: 2px; top: 2px;
-  background: var(--text-1); border-radius: 50%; transition: transform .15s ease, background .15s ease;
-}
-.fx-switch input:checked + .fx-switch-track{ background: rgba(94,234,212,0.35); }
-.fx-switch input:checked + .fx-switch-track::before{ transform: translateX(17px); background: var(--accent); }
-.fx-img-placeholder{
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(120,140,180,0.08); border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm); color: var(--text-2); font-size: 10.5px; text-align: center;
+// --- Support / "Report an issue" widget ---
+// Injects a floating button + modal into the current page and wires it to
+// POST /api/support. Works for a logged-in user (their account is
+// attached automatically via authFetch's token) or a guest (falls back to
+// a plain fetch and an optional name/email field). Call this once per
+// page, after config.js has set window.API_BASE.
+function initSupportWidget() {
+  if (document.getElementById('fxSupportFab')) return; // already initialized
+
+  const loggedIn = !!(typeof getAuthToken === 'function' && getAuthToken());
+
+  const guestFieldsHtml = loggedIn ? '' : `
+    <label>Your name</label>
+    <input type="text" id="fxSupportName" placeholder="So we know who's reporting this">
+    <label>Your email (optional)</label>
+    <input type="email" id="fxSupportEmail" placeholder="So we can follow up">
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <button type="button" id="fxSupportFab" class="fx-btn-ghost fx-support-fab">Report an issue</button>
+    <div id="fxSupportModal" class="fx-modal-backdrop">
+      <div class="fx-card fx-modal">
+        <div class="fx-eyebrow">Support</div>
+        <h3 style="margin-top:0;">Report a problem</h3>
+        <form id="fxSupportForm">
+          ${guestFieldsHtml}
+          <label>What's this about?</label>
+          <input type="text" id="fxSupportSubject" required placeholder="e.g. Order never arrived">
+          <label>Details</label>
+          <textarea id="fxSupportMessage" required rows="4" placeholder="Tell us what happened - order number, timing, anything that helps." style="width:100%; resize:vertical; font-family:inherit; padding:10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); border:1px solid var(--border); color:var(--text-0);"></textarea>
+          <div class="fx-row-end" style="margin-top:12px;">
+            <button type="button" id="fxSupportCancel" class="fx-btn-muted" style="width:auto;">Cancel</button>
+            <button type="submit" id="fxSupportSubmit" style="width:auto;">Send report</button>
+          </div>
+        </form>
+        <p id="fxSupportStatus" class="fx-support-status"></p>
+      </div>
+    </div>
+  `);
+
+  const modal = document.getElementById('fxSupportModal');
+  const openModal = () => modal.classList.add('fx-open');
+  const closeModal = () => {
+    modal.classList.remove('fx-open');
+    document.getElementById('fxSupportStatus').innerText = '';
+  };
+
+  document.getElementById('fxSupportFab').addEventListener('click', openModal);
+  document.getElementById('fxSupportCancel').addEventListener('click', closeModal);
+
+  document.getElementById('fxSupportForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById('fxSupportSubmit');
+    const status = document.getElementById('fxSupportStatus');
+    const payload = {
+      subject: document.getElementById('fxSupportSubject').value,
+      message: document.getElementById('fxSupportMessage').value
+    };
+    if (!loggedIn) {
+      const nameEl = document.getElementById('fxSupportName');
+      const emailEl = document.getElementById('fxSupportEmail');
+      if (nameEl) payload.name = nameEl.value;
+      if (emailEl) payload.email = emailEl.value;
+    }
+
+    setButtonLoading(submitBtn, true, 'Sending...');
+    status.style.color = '';
+    status.innerText = '';
+
+    try {
+      const base = window.API_BASE || '';
+      const doFetch = loggedIn ? authFetch : fetch;
+      const res = await doFetch(`${base}/api/support`, {
+        method: 'POST',
+        headers: loggedIn ? undefined : { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setButtonLoading(submitBtn, false);
+      if (data.success) {
+        status.style.color = '#4ade80';
+        status.innerText = data.message || 'Thanks - your report has been logged.';
+        document.getElementById('fxSupportForm').reset();
+        setTimeout(closeModal, 1800);
+      } else {
+        status.style.color = '#ff5d7a';
+        status.innerText = data.message || 'Could not send your report.';
+      }
+    } catch (err) {
+      setButtonLoading(submitBtn, false);
+      status.style.color = '#ff5d7a';
+      status.innerText = 'Server connection error. Please try again.';
+    }
+  });
 }
 
-/* ---------- support / report-an-issue widget ---------- */
-.fx-support-fab{
-  position: fixed; right: 18px; bottom: 18px; z-index: 900;
-  width: auto; border-radius: 999px; padding: 12px 18px;
-  box-shadow: var(--shadow-glow);
-}
-.fx-support-status{ font-size: 13px; margin-top: 8px; }
-
-/* ---------- notification center ---------- */
-.fx-notif-wrap{ position: relative; display: inline-block; }
-.fx-notif-bell{ position: relative; font-size: 16px; }
-.fx-notif-badge{
-  position: absolute; top: -4px; right: -4px;
-  background: #ff5d7a; color: #fff; font-size: 10px; font-weight: 700;
-  border-radius: 999px; min-width: 16px; height: 16px; line-height: 16px;
-  text-align: center; padding: 0 3px;
-}
-.fx-notif-panel{
-  position: absolute; right: 0; top: calc(100% + 8px); z-index: 950;
-  width: 300px; max-height: 360px; overflow-y: auto; padding: 14px;
-}
-.fx-notif-item{ padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
-.fx-notif-item:last-child{ border-bottom: none; }
-.fx-notif-unread{ background: rgba(139,123,255,0.08); border-radius: var(--radius-sm); }
-
-/* ---------- nav avatar ---------- */
-.fx-nav-avatar{
-  width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
-  cursor: pointer; border: 1px solid var(--border-strong); flex: none;
-}
-.fx-nav-avatar-fallback{
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(139,123,255,0.18); color: var(--text-0);
-  font-weight: 700; font-size: 13px;
+// Minimal HTML-escaping for untrusted, free-form user text (e.g. support
+// ticket messages) before it's dropped into innerHTML via template
+// literals elsewhere in the app.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
 }
 
-/* ---------- referral card ---------- */
-.fx-referral-code{
-  font-size: 22px; font-weight: 700; letter-spacing: 2px;
-  padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
-  display: inline-block; margin: 8px 0;
+// --- Notification center ---
+// A bell icon + dropdown, shared across customer/driver/merchant/admin
+// pages. Requires the page to already have loaded the Socket.IO client
+// script (<script src="/socket.io/socket.io.js">) and to have a valid
+// auth token - call this only after confirming the user is logged in.
+let fxNotificationSocket = null;
+
+function initNotificationCenter() {
+  if (document.getElementById('fxNotifBell')) return; // already initialized
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : null;
+  if (!token) return; // notifications are for logged-in accounts only
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="fxNotifWrap" class="fx-notif-wrap">
+      <button type="button" id="fxNotifBell" class="fx-btn-ghost fx-notif-bell" style="width:auto;">
+        🔔<span id="fxNotifBadge" class="fx-notif-badge" style="display:none;">0</span>
+      </button>
+      <div id="fxNotifPanel" class="fx-card fx-notif-panel" style="display:none;">
+        <div class="fx-row-end" style="justify-content:space-between; margin-bottom:8px;">
+          <b>Notifications</b>
+          <button type="button" id="fxNotifMarkAll" class="fx-btn-muted" style="width:auto; padding:4px 10px; font-size:12px;">Mark all read</button>
+        </div>
+        <div id="fxNotifList"><span class="inline-spinner fx-spinner-light"></span>Loading...</div>
+      </div>
+    </div>
+  `);
+
+  const panel = document.getElementById('fxNotifPanel');
+  const badge = document.getElementById('fxNotifBadge');
+  const list = document.getElementById('fxNotifList');
+
+  function setUnreadCount(n) {
+    if (n > 0) {
+      badge.style.display = 'inline-block';
+      badge.innerText = n > 9 ? '9+' : String(n);
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function renderList(notifications) {
+    if (!notifications.length) {
+      list.innerHTML = '<p class="fx-muted" style="margin:6px 0;">Nothing yet.</p>';
+      return;
+    }
+    list.innerHTML = notifications.map(n => `
+      <div class="fx-notif-item ${n.read ? '' : 'fx-notif-unread'}" data-id="${n._id}">
+        <div style="font-weight:600; font-size:13px;">${escapeHtml(n.title)}</div>
+        <div class="fx-muted" style="font-size:12.5px;">${escapeHtml(n.message)}</div>
+        <div class="fx-muted" style="font-size:10.5px; margin-top:2px;">${new Date(n.createdAt).toLocaleString()}</div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.fx-notif-item').forEach(el => {
+      el.addEventListener('click', async () => {
+        if (!el.classList.contains('fx-notif-unread')) return;
+        el.classList.remove('fx-notif-unread');
+        try {
+          await authFetch(`${window.API_BASE}/api/notifications/${el.dataset.id}/read`, { method: 'PATCH' });
+          refreshUnreadCount();
+        } catch (err) { /* visual state already updated; a background retry isn't worth the complexity here */ }
+      });
+    });
+  }
+
+  async function loadNotifications() {
+    try {
+      const res = await authFetch(`${window.API_BASE}/api/notifications`);
+      const data = await res.json();
+      if (data.success) {
+        renderList(data.notifications);
+        setUnreadCount(data.unreadCount);
+      }
+    } catch (err) {
+      list.innerHTML = '<p class="fx-muted" style="margin:6px 0;">Could not load notifications.</p>';
+    }
+  }
+
+  async function refreshUnreadCount() {
+    try {
+      const res = await authFetch(`${window.API_BASE}/api/notifications`);
+      const data = await res.json();
+      if (data.success) setUnreadCount(data.unreadCount);
+    } catch (err) { /* stale badge count is a minor, self-correcting issue */ }
+  }
+
+  document.getElementById('fxNotifBell').addEventListener('click', () => {
+    const willShow = panel.style.display === 'none';
+    panel.style.display = willShow ? 'block' : 'none';
+    if (willShow) loadNotifications();
+  });
+
+  document.getElementById('fxNotifMarkAll').addEventListener('click', async () => {
+    try {
+      await authFetch(`${window.API_BASE}/api/notifications/read-all`, { method: 'PATCH' });
+      list.querySelectorAll('.fx-notif-unread').forEach(el => el.classList.remove('fx-notif-unread'));
+      setUnreadCount(0);
+    } catch (err) { showToast('Could not mark notifications as read.', 'error'); }
+  });
+
+  // Close the panel when clicking anywhere outside it.
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('fxNotifWrap').contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  loadNotifications();
+
+  // Live push: same socket.io client every map/tracking page already
+  // loads. 'register' proves who we are (server verifies the token
+  // itself - see server.js) so notifications actually land in the right
+  // person's room instead of broadcasting to everyone.
+  if (typeof io === 'function') {
+    fxNotificationSocket = io(window.API_BASE || undefined);
+    fxNotificationSocket.emit('register', token);
+    fxNotificationSocket.on('notification', () => {
+      // Re-fetch rather than trying to splice the pushed item into
+      // whatever partial state the panel is in - simpler, and this list
+      // is small enough that the extra request is negligible.
+      refreshUnreadCount();
+      if (panel.style.display !== 'none') loadNotifications();
+    });
+  }
 }
-.fx-referral-stats{ display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
-.fx-referral-stat b{ display: block; font-size: 20px; }
-.fx-referral-stat span{ font-size: 11.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* ---------- live order tracking map (customer order history) ---------- */
-.fx-track-map{
-  width: 100%; height: 220px; margin-top: 10px;
-  border-radius: var(--radius-sm); overflow: hidden;
-  border: 1px solid var(--border);
+async function renderNavAvatar(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  try {
+    const res = await authFetch(`${window.API_BASE}/api/account/me`);
+    const data = await res.json();
+    if (!data.success) return;
+    if (data.user.profilePicUrl) {
+      container.innerHTML = `<img src="${data.user.profilePicUrl}" class="fx-nav-avatar" alt="Your profile picture" title="My Account" onclick="window.location.href='/account.html'">`;
+    } else {
+      // No picture set yet - a fallback initial beats a broken image or
+      // an empty gap in the nav, and doubles as a visible hint that
+      // there's an avatar slot waiting to be filled in on account.html.
+      const initial = ((data.user.name || data.user.email || '?').trim().charAt(0) || '?').toUpperCase();
+      container.innerHTML = `<div class="fx-nav-avatar fx-nav-avatar-fallback" title="My Account" onclick="window.location.href='/account.html'">${initial}</div>`;
+    }
+  } catch (err) { /* nav avatar is decorative - fail silently */ }
 }
 
-/* ---------- call button (tel: link styled like a button) ---------- */
-.fx-call-btn{
-  display: inline-flex; align-items: center; justify-content: center;
-  width: auto; padding: 10px 16px; margin-top: 10px;
-  border-radius: var(--radius-sm); text-decoration: none;
-  background: rgba(94,234,212,0.16); color: var(--text-0);
-  font-size: 13.5px; font-weight: 600; cursor: pointer;
-  border: 1px solid transparent;
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-.fx-call-btn:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px -8px rgba(94,234,212,0.4); }
+function showToast(message, type) {
+  let stack = document.querySelector('.fx-toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'fx-toast-stack';
+    document.body.appendChild(stack);
+  }
 
-/* ---------- star rating picker ---------- */
-.fx-star-picker{ display: flex; gap: 4px; font-size: 22px; margin-top: 2px; }
-.fx-star{ cursor: pointer; color: var(--border-strong); transition: color .1s ease; }
-.fx-star:hover{ color: var(--accent); }
-.fx-star-filled{ color: #ffb020; }
+  const toast = document.createElement('div');
+  toast.className = `fx-toast ${type === 'error' ? 'err' : type === 'success' ? 'ok' : ''}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
 
-/* ---------- admin broadcast form ---------- */
-.fx-broadcast-form textarea{
-  width: 100%; resize: vertical; font-family: inherit; padding: 10px;
-  border-radius: var(--radius-sm); background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border); color: var(--text-0);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity .25s ease';
+    setTimeout(() => toast.remove(), 250);
+  }, 3500);
 }
