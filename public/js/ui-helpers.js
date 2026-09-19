@@ -122,25 +122,43 @@ function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlIn
 // beforehand - this only adds the tile layer, so markers/click-handlers
 // wired right after creating the map don't have to wait on this fetch.
 async function addConfiguredTileLayer(map) {
+  // Same CARTO fallback the server itself uses when no key is set - keeps
+  // the map usable even if the config request fails OR comes back with an
+  // unexpected/empty shape (e.g. a sleeping/misconfigured backend).
+  const FALLBACK_CFG = {
+    tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    maxZoom: 19
+  };
+
   let cfg;
   try {
     const res = await fetch(`${window.API_BASE || ''}/api/map-config`);
-    cfg = await res.json();
+    const data = await res.json();
+    // Guard against a 200 response that isn't actually usable (missing
+    // field, null body, wrong shape) - without this, a bad response here
+    // silently skips the tile layer entirely and leaves the map showing
+    // nothing but Leaflet's own default attribution credit.
+    cfg = (data && typeof data.tileUrlTemplate === 'string') ? data : FALLBACK_CFG;
   } catch (err) {
-    // Same CARTO fallback the server itself uses when no key is set -
-    // keeps the map usable even if this one request fails.
-    cfg = {
-      tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      subdomains: 'abcd',
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      maxZoom: 19
-    };
+    cfg = FALLBACK_CFG;
   }
-  L.tileLayer(cfg.tileUrlTemplate, {
-    maxZoom: cfg.maxZoom || 19,
-    subdomains: cfg.subdomains || undefined,
-    attribution: cfg.attribution
-  }).addTo(map);
+
+  try {
+    L.tileLayer(cfg.tileUrlTemplate, {
+      maxZoom: cfg.maxZoom || 19,
+      subdomains: cfg.subdomains || undefined,
+      attribution: cfg.attribution
+    }).addTo(map);
+  } catch (err) {
+    // Last-resort safety net so a bad cfg never leaves the map blank.
+    L.tileLayer(FALLBACK_CFG.tileUrlTemplate, {
+      maxZoom: FALLBACK_CFG.maxZoom,
+      subdomains: FALLBACK_CFG.subdomains,
+      attribution: FALLBACK_CFG.attribution
+    }).addTo(map);
+  }
 }
 
 function isDataSaverOn() {
