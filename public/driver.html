@@ -85,9 +85,9 @@
             + '<button class="fx-btn-danger" onclick="respondToOrder(\'' + o._id + '\', false)">Decline</button>'
             + '</div>';
         } else if (o.status === 'assigned' && o.driverAccepted === true) {
-          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'picked_up\')">Mark Picked Up</button>';
+          btn = '<button onclick="triggerPhotoCapture(\'' + o._id + '\',\'picked_up\')">📷 Take Pickup Photo & Mark Picked Up</button>';
         } else if (o.status === 'picked_up') {
-          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'delivered\')">Mark Delivered</button>';
+          btn = '<button onclick="triggerPhotoCapture(\'' + o._id + '\',\'delivered\')">📷 Take Delivery Photo & Mark Delivered</button>';
         }
 
         const newBadge = (o.status === 'assigned' && o.driverAccepted === null)
@@ -127,11 +127,42 @@
       renderMyOrders(await res.json());
     }
 
-    async function updateOrderStatus(orderId, status) {
-      await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status })
+    // Opens the device's camera (accept + capture hint the browser to go
+    // straight to the camera on mobile rather than a general file picker)
+    // and, once a photo is taken, sends it along with the status change
+    // in one request.
+    function triggerPhotoCapture(orderId, status) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'environment';
+      input.addEventListener('change', () => {
+        if (input.files && input.files[0]) {
+          updateOrderStatus(orderId, status, input.files[0]);
+        }
       });
+      input.click();
+    }
+
+    async function updateOrderStatus(orderId, status, photoFile) {
+      let body;
+      if (photoFile) {
+        const formData = new FormData();
+        formData.append('status', status);
+        formData.append('photo', photoFile);
+        body = formData;
+      } else {
+        body = JSON.stringify({ status });
+      }
+
+      const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Could not update order status.');
+      }
       loadMyOrders();
     }
 
