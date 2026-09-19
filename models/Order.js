@@ -37,6 +37,13 @@ const orderSchema = new mongoose.Schema({
   // Previously an assignment was just forced onto a driver with no way
   // for them to signal they can't take it.
   driverAccepted: { type: Boolean, default: null },
+  // Photo proof the driver captures at each handoff point - lets the
+  // customer and admin see the order was actually picked up/delivered,
+  // not just told so.
+  pickupPhotoUrl: { type: String, default: '' },
+  pickupPhotoAt: { type: Date, default: null },
+  deliveryPhotoUrl: { type: String, default: '' },
+  deliveryPhotoAt: { type: Date, default: null },
   paymentMethod: { type: String, default: 'Cash' },
   ecocashNumber: { type: String, default: null },
   paymentStatus: { type: String, default: 'n/a' },
