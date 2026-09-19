@@ -639,6 +639,12 @@
               ${canRate ? `<button class="fx-btn-muted" style="width:auto;" onclick="openRatingForm('${order._id}')">Rate this order</button>` : ''}
             </div>
             ${alreadyRated ? `<div class="fx-muted" style="font-size:12.5px; margin-top:6px;">Your rating: ${order.shopRating ? `Shop ${'★'.repeat(order.shopRating)}` : ''}${order.shopRating && order.driverRating ? ' &middot; ' : ''}${order.driverRating ? `Driver ${'★'.repeat(order.driverRating)}` : ''}</div>` : ''}
+            ${(order.pickupPhotoUrl || order.deliveryPhotoUrl) ? `
+              <div style="display:flex; gap:10px; margin-top:10px;">
+                ${order.pickupPhotoUrl ? `<div><div class="fx-muted" style="font-size:11px;">Pickup photo</div><img src="${order.pickupPhotoUrl.startsWith('http') ? order.pickupPhotoUrl : window.API_BASE + order.pickupPhotoUrl}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; cursor:pointer;" onclick="window.open(this.src, '_blank')"></div>` : ''}
+                ${order.deliveryPhotoUrl ? `<div><div class="fx-muted" style="font-size:11px;">Delivery photo</div><img src="${order.deliveryPhotoUrl.startsWith('http') ? order.deliveryPhotoUrl : window.API_BASE + order.deliveryPhotoUrl}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; cursor:pointer;" onclick="window.open(this.src, '_blank')"></div>` : ''}
+              </div>
+            ` : ''}
             <div id="trackMap-${order._id}" class="fx-track-map" style="display:none;"></div>
             <div id="ratingForm-${order._id}" style="display:none; margin-top:10px;"></div>
           `;
