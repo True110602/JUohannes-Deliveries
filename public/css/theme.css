@@ -375,6 +375,21 @@ tr:hover td{ background: rgba(120,170,255,0.04); }
 .fx-drop-preview.fx-has-image{ display: block; }
 .fx-drop-preview-round{ border-radius: 50%; }
 
+/* ---------- shop category filter tabs (customer catalog) ---------- */
+.shop-category-tabs{
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; margin-bottom: 4px;
+}
+.shop-category-tab{
+  width: auto; padding: 6px 14px; font-size: 12.5px; font-weight: 600;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03); color: var(--text-2);
+  cursor: pointer; transition: all 0.15s ease;
+}
+.shop-category-tab:hover{ border-color: var(--accent); color: var(--text-0); }
+.shop-category-tab-active{
+  background: var(--accent); border-color: var(--accent); color: #0a0a0a;
+}
+
 /* ---------- shop picker (customer catalog) ---------- */
 /* Horizontal sliding row of shop tiles - swipe/scroll on touch devices,
    scrollbar drag or shift+wheel on desktop. scroll-snap keeps each tile
