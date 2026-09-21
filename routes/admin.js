@@ -21,7 +21,7 @@ router.get('/drivers', ...requireRole('admin'), async (req, res) => {
 // they can list items publicly.
 router.get('/merchants', ...requireRole('admin'), async (req, res) => {
   try {
-    const merchants = await User.find({ role: 'merchant' }).select('email name shopName approved createdAt');
+    const merchants = await User.find({ role: 'merchant' }).select('email name shopName shopCategory approved createdAt');
     res.json(merchants);
   } catch (err) {
     res.status(500).json({ message: err.message });
