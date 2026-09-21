@@ -89,6 +89,7 @@
     <form id="orderForm">
       <h3 style="margin-top:0;">Shops</h3>
       <div id="shopSelectionView">
+        <div id="shopCategoryTabs" class="shop-category-tabs"></div>
         <div id="shopGrid" class="shop-grid"><span class="inline-spinner fx-spinner-light"></span>Loading shops...</div>
       </div>
 
@@ -438,36 +439,80 @@
     // Customers previously landed on one combined list of every merchant's
     // items with no way to tell which shop each came from. Now they pick a
     // shop first, then see just that shop's menu.
+    // All shops fetched once and kept here - category tabs then just
+    // filter this in-memory list instead of round-tripping to the server
+    // on every tab click.
+    let allShops = [];
+    let activeShopCategory = 'All';
+
+    function renderShopGrid() {
+      const grid = document.getElementById('shopGrid');
+      const shops = activeShopCategory === 'All'
+        ? allShops
+        : allShops.filter(s => s.shopCategory === activeShopCategory);
+
+      if (!shops.length) {
+        grid.innerHTML = `<i class="fx-muted">No ${activeShopCategory === 'All' ? '' : activeShopCategory.toLowerCase() + ' '}shops available right now.</i>`;
+        return;
+      }
+
+      grid.innerHTML = '';
+      shops.forEach(shop => {
+        const card = document.createElement('div');
+        card.className = 'shop-card' + (shop.isOpen === false ? ' shop-card-closed' : '');
+        card.innerHTML = `
+          ${(shop.profilePicUrl && !isDataSaverOn()) ? `<img src="${shop.profilePicUrl}" alt="${shop.shopName}" onerror="this.style.display='none'">` : ''}
+          <div class="shop-card-name">${shop.shopName}</div>
+          <div class="shop-card-count">${shop.itemCount} item${shop.itemCount === 1 ? '' : 's'}</div>
+          ${shop.isOpen === false ? '<div class="shop-card-closed-badge">Closed</div>' : ''}
+        `;
+        card.addEventListener('click', () => {
+          if (shop.isOpen === false) {
+            alert(`${shop.shopName} isn't taking orders right now - check back later.`);
+            return;
+          }
+          selectShop(shop.merchantEmail, shop.shopName, shop.address);
+        });
+        grid.appendChild(card);
+      });
+    }
+
+    async function loadShopCategoryTabs() {
+      const tabsEl = document.getElementById('shopCategoryTabs');
+      let categories = [];
+      try {
+        const res = await fetch(`${window.API_BASE}/api/catalog/categories`);
+        categories = await res.json();
+      } catch (err) {
+        return; // no tabs is fine - the shop grid still shows everything
+      }
+
+      const renderTabs = () => {
+        tabsEl.innerHTML = ['All', ...categories].map(cat => `
+          <button type="button" class="shop-category-tab${cat === activeShopCategory ? ' shop-category-tab-active' : ''}" data-category="${cat}">${cat}</button>
+        `).join('');
+        tabsEl.querySelectorAll('.shop-category-tab').forEach(btn => {
+          btn.addEventListener('click', () => {
+            activeShopCategory = btn.dataset.category;
+            renderTabs();
+            renderShopGrid();
+          });
+        });
+      };
+      renderTabs();
+    }
+
     async function loadShops() {
       const grid = document.getElementById('shopGrid');
+      loadShopCategoryTabs();
       try {
         const res = await authFetch(`${window.API_BASE}/api/catalog/shops`);
-        const shops = await res.json();
-        grid.innerHTML = '';
-
-        if (!shops.length) {
+        allShops = await res.json();
+        if (!allShops.length) {
           grid.innerHTML = '<i class="fx-muted">No shops available right now.</i>';
           return;
         }
-
-        shops.forEach(shop => {
-          const card = document.createElement('div');
-          card.className = 'shop-card' + (shop.isOpen === false ? ' shop-card-closed' : '');
-          card.innerHTML = `
-            ${(shop.profilePicUrl && !isDataSaverOn()) ? `<img src="${shop.profilePicUrl}" alt="${shop.shopName}" onerror="this.style.display='none'">` : ''}
-            <div class="shop-card-name">${shop.shopName}</div>
-            <div class="shop-card-count">${shop.itemCount} item${shop.itemCount === 1 ? '' : 's'}</div>
-            ${shop.isOpen === false ? '<div class="shop-card-closed-badge">Closed</div>' : ''}
-          `;
-          card.addEventListener('click', () => {
-            if (shop.isOpen === false) {
-              alert(`${shop.shopName} isn't taking orders right now - check back later.`);
-              return;
-            }
-            selectShop(shop.merchantEmail, shop.shopName, shop.address);
-          });
-          grid.appendChild(card);
-        });
+        renderShopGrid();
       } catch (err) {
         grid.innerHTML = '<i class="fx-muted">Could not load shops.</i>';
       }
