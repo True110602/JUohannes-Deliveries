@@ -87,6 +87,10 @@
           <label>Shop name</label>
           <input type="text" id="shopName" placeholder="e.g. Bhekinkosi's Fast Food">
 
+          <label>Shop Category</label>
+          <p class="fx-muted" style="margin-top:-6px; font-size:12.5px;">Lets customers filter shops by type (Restaurants, Hardware, etc.) when browsing.</p>
+          <select id="shopCategory"></select>
+
           <label>Shop Status</label>
           <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
             <span class="fx-switch">
@@ -250,14 +254,33 @@
 
     let currentMerchantEmail = null;
 
+    // Populates the Shop Category <select> from the server's canonical
+    // list (routes/catalog.js) so it can never drift out of sync with
+    // what's actually a valid shopCategory value on the User model.
+    async function loadShopCategories() {
+      const select = document.getElementById('shopCategory');
+      try {
+        const res = await fetch(`${window.API_BASE}/api/catalog/categories`);
+        const categories = await res.json();
+        select.innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      } catch (err) {
+        // Fall back to a single option rather than leaving the dropdown
+        // empty - profile saving still works, just without a real choice
+        // until the categories endpoint is reachable again.
+        select.innerHTML = '<option value="Other">Other</option>';
+      }
+    }
+
     async function loadProfile() {
       try {
+        await loadShopCategories();
         const res = await authFetch(`${window.API_BASE}/api/merchant/profile`);
         const data = await res.json();
         if (data.success) {
           const p = data.profile;
           currentMerchantEmail = p.email;
           document.getElementById('shopName').value = p.shopName || '';
+          document.getElementById('shopCategory').value = p.shopCategory || 'Other';
           document.getElementById('profilePicUrl').value = p.profilePicUrl || '';
           document.getElementById('bankName').value = (p.bankDetails && p.bankDetails.bankName) || '';
           document.getElementById('accountName').value = (p.bankDetails && p.bankDetails.accountName) || '';
@@ -363,6 +386,7 @@
           method: 'PATCH',
           body: JSON.stringify({
             shopName: document.getElementById('shopName').value,
+            shopCategory: document.getElementById('shopCategory').value,
             profilePicUrl: document.getElementById('profilePicUrl').value,
             bankName: document.getElementById('bankName').value,
             accountName: document.getElementById('accountName').value,
