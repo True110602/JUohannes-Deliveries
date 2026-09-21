@@ -146,11 +146,18 @@ async function addConfiguredTileLayer(map) {
   }
 
   try {
-    L.tileLayer(cfg.tileUrlTemplate, {
+    // Only include `subdomains` when the config actually provides one.
+    // Explicitly passing `subdomains: undefined` overrides Leaflet's own
+    // internal default ('abc') with undefined instead of leaving it
+    // alone, which crashes _getSubdomain() on every tile request - this
+    // is why providers like MapTiler (whose URLs have no {s} and whose
+    // config has no subdomains field) rendered a totally blank map.
+    const tileOptions = {
       maxZoom: cfg.maxZoom || 19,
-      subdomains: cfg.subdomains || undefined,
       attribution: cfg.attribution
-    }).addTo(map);
+    };
+    if (cfg.subdomains) tileOptions.subdomains = cfg.subdomains;
+    L.tileLayer(cfg.tileUrlTemplate, tileOptions).addTo(map);
   } catch (err) {
     // Last-resort safety net so a bad cfg never leaves the map blank.
     L.tileLayer(FALLBACK_CFG.tileUrlTemplate, {
