@@ -506,6 +506,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/spreadsheet', spreadsheetRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
