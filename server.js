@@ -28,6 +28,7 @@ const { notifyUser, notifyRole } = require('./utils/notify');
 
 const app = express();
 const server = http.createServer(app);
+const spreadsheetRoutes = require('./routes/spreadsheet');
 
 // --- SOCKET.IO ---
 const io = new Server(server, {
