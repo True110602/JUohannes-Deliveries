@@ -24,11 +24,11 @@ const adminRoutes = require('./routes/admin');
 const accountRoutes = require('./routes/account');
 const supportRoutes = require('./routes/support');
 const notificationRoutes = require('./routes/notifications');
+const spreadsheetRoutes = require('./routes/spreadsheet');
 const { notifyUser, notifyRole } = require('./utils/notify');
 
 const app = express();
 const server = http.createServer(app);
-const spreadsheetRoutes = require('./routes/spreadsheet');
 
 // --- SOCKET.IO ---
 const io = new Server(server, {
@@ -426,17 +426,9 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
     if (user) {
       const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
       const hashedCode = await bcrypt.hash(resetCode, 10);
-      // Update only these two fields directly, rather than mutating the
-      // fetched document and calling .save() - .save() revalidates every
-      // required field on the whole document (name, password, etc.), so
-      // an unrelated data issue on an old/broken account (e.g. one
-      // missing a password from before this field was required) would
-      // fail this completely unrelated request. updateOne only touches
-      // - and only validates - the two fields actually being changed.
-      await User.updateOne(
-        { _id: user._id },
-        { resetCode: hashedCode, resetCodeExpires: Date.now() + 15 * 60 * 1000 }
-      );
+      user.resetCode = hashedCode;
+      user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
+      await user.save();
 
       await transporter.sendMail({
         from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
