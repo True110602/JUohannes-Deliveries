@@ -3,291 +3,246 @@
 <head>
   <script src="/js/config.js"></script>
   <script src="/js/ui-helpers.js"></script>
-  <script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
+  <script src="/js/geo-helpers.js"></script>
 
-    // 1. If no token in local storage, remain on login page
-    if (!token) {
-      return;
-    }
-
-    try {
-      // 2. Validate token against server endpoint
-      const res = await fetch((window.API_BASE || '') + '/api/check-session', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.loggedIn) {
-        // Active token found -> Redirect directly to designated page
-        window.location.href = data.redirectUrl || '/customer.html';
-      } else {
-        // Token expired or invalid -> Clear local storage
-        localStorage.removeItem('token');
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-    }
-  })();
-</script>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login - Johannes Deliveries</title>
+  <title>Johannes Deliveries - Driver Portal</title>
+
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/theme.css" />
   <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-  <div class="fx-shell fx-center">
-  <div style="width:100%; max-width:420px;">
-
-    <div class="fx-brand">
-      <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
-      <div class="fx-brand-text"><b>Johannes</b> Deliveries</div>
-    </div>
-
-    <!-- Main Auth Box -->
-    <div class="fx-card">
-      <div class="fx-eyebrow fx-center-text">Welcome back</div>
-      <h2 class="fx-center-text" style="margin-top:0;">Sign in to your account</h2>
-
-      <form id="loginForm">
-        <label for="email">Email / Username</label>
-        <input type="text" id="email" required placeholder="Enter your email or username" />
-
-        <label for="password">Password</label>
-        <input type="password" id="password" required placeholder="Enter your password" />
-
-        <!-- Forgot Password Link -->
-        <div style="text-align: right; margin: 10px 0 6px;">
-          <a href="#" id="forgotPasswordBtn" class="fx-link" style="font-size:13px;">Forgot Password?</a>
+  <div class="fx-shell" style="max-width: 640px;">
+  <div class="fx-card">
+    <div class="fx-nav" style="margin-bottom:14px;">
+      <div class="fx-nav-title">
+        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
+        <div>
+          <span class="fx-pill">Driver</span>
+          <h2 style="margin:6px 0 0;">Navigation portal</h2>
         </div>
-
-        <button type="submit" id="loginBtn">Login</button>
-      </form>
-
-      <p id="loginStatus"></p>
-
-      <hr class="fx-divider" />
-
-      <!-- Registration Redirect Option -->
-      <div class="fx-center-text fx-muted">
-        Don't have an account? <a href="register.html" class="fx-link">Register here</a>
       </div>
+      <span id="navAvatarContainer"></span>
+      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
+      <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
     </div>
 
-    <p class="fx-muted fx-center-text" style="margin-top:18px;">Fast, live-tracked deliveries across the city.</p>
+    <div class="status-box" id="connectionStatus">Status: Offline</div>
+
+    <label>Driver ID / Name</label>
+    <input type="text" id="driverId" readonly>
+
+    <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
+
+    <label>Active Delivery</label>
+    <div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
+
+    <label>Live GPS Position</label>
+    <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
   </div>
   </div>
 
-  <!-- Password Reset Modal -->
-  <div id="resetPasswordModal" class="fx-modal-backdrop">
-    <div class="fx-card fx-modal">
-
-      <!-- Step 1: Request Code -->
-      <div id="stepRequestCode">
-        <div class="fx-eyebrow">Account recovery</div>
-        <h3 style="margin-top:0;">Reset password</h3>
-        <p class="fx-muted">Enter your registered email address to receive a 6-digit verification code.</p>
-        <input type="email" id="resetEmailInput" placeholder="Enter your email" />
-        <div class="fx-row-end">
-          <button type="button" id="btnCancelStep1" class="fx-btn-muted" style="width:auto;">Cancel</button>
-          <button type="button" id="btnSendCode" style="width:auto;">Send Code</button>
-        </div>
-      </div>
-
-      <!-- Step 2: Submit Code & New Password -->
-      <div id="stepSubmitReset" style="display: none;">
-        <div class="fx-eyebrow">Almost there</div>
-        <h3 style="margin-top:0;">Enter reset code</h3>
-        <p class="fx-muted">Check your email for the 6-digit code.</p>
-        <input type="text" id="resetCodeInput" placeholder="6-Digit Verification Code" />
-        <input type="password" id="newPasswordInput" placeholder="Enter new password" />
-        <div class="fx-row-end">
-          <button type="button" id="btnCancelStep2" class="fx-btn-muted" style="width:auto;">Cancel</button>
-          <button type="button" id="btnResetPassword" style="width:auto;">Reset Password</button>
-        </div>
-      </div>
-
-      <p id="resetModalStatus"></p>
-    </div>
-  </div>
-
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      // Form & Modal Elements
-      const loginForm = document.getElementById('loginForm');
-      const loginStatus = document.getElementById('loginStatus');
-      const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
-      const resetPasswordModal = document.getElementById('resetPasswordModal');
-      const btnSendCode = document.getElementById('btnSendCode');
-      const btnResetPassword = document.getElementById('btnResetPassword');
-      const btnCancelStep1 = document.getElementById('btnCancelStep1');
-      const btnCancelStep2 = document.getElementById('btnCancelStep2');
-      const resetModalStatus = document.getElementById('resetModalStatus');
+    // --- Everything below is defined at the top level (global scope) on
+    // purpose - onclick="..." attributes and socket.on(...) callbacks can
+    // only find functions that are actually global. A previous version of
+    // this file nested logoutDriver/renderMyOrders inside a .then()
+    // callback, which meant the Logout button silently failed (the
+    // function didn't exist where the browser was looking for it).
 
-      // Helpers
-      function closeModals() {
-        resetPasswordModal.classList.remove('fx-open');
-        resetModalStatus.innerText = '';
+    function logoutDriver() {
+      clearAuthToken();
+      window.location.href = '/login.html';
+    }
+
+    function renderMyOrders(orders) {
+      const myEmail = document.getElementById('driverId').value;
+      const mine = orders.filter(function(o) {
+        return o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled';
+      });
+      const container = document.getElementById('ordersList');
+      if (!mine.length) {
+        container.innerHTML = 'No orders assigned yet.';
+        return;
+      }
+      let html = '';
+      for (let i = 0; i < mine.length; i++) {
+        const o = mine[i];
+        let btn = '';
+
+        if (o.status === 'assigned' && o.driverAccepted === null) {
+          // Fresh assignment, awaiting this driver's response.
+          btn = '<div style="display:flex; gap:8px; margin-top:8px;">'
+            + '<button style="background:#4ade80;" onclick="respondToOrder(\'' + o._id + '\', true)">Accept</button>'
+            + '<button class="fx-btn-danger" onclick="respondToOrder(\'' + o._id + '\', false)">Decline</button>'
+            + '</div>';
+        } else if (o.status === 'assigned' && o.driverAccepted === true) {
+          btn = '<button onclick="triggerPhotoCapture(\'' + o._id + '\',\'picked_up\')">📷 Take Pickup Photo & Mark Picked Up</button>';
+        } else if (o.status === 'picked_up') {
+          btn = '<button onclick="triggerPhotoCapture(\'' + o._id + '\',\'delivered\')">📷 Take Delivery Photo & Mark Delivered</button>';
+        }
+
+        const newBadge = (o.status === 'assigned' && o.driverAccepted === null)
+          ? '<span class="fx-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b;">New assignment</span>'
+          : '';
+
+        // Only shown once the driver has accepted - no reason to call a
+        // customer about a delivery they haven't committed to yet.
+        const callBtn = (o.driverAccepted === true && o.customerPhone)
+          ? '<a href="tel:' + o.customerPhone + '" class="fx-call-btn">📞 Call customer</a>'
+          : '';
+
+        html += '<div class="fx-card" style="margin-top:10px;">'
+          + newBadge
+          + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
+          + '<div>Pickup: ' + o.pickup + '</div>'
+          + '<div>Dropoff: ' + o.dropoff + '</div>'
+          + '<div>Customer: ' + o.customerName + '</div>'
+          + '<div>Status: ' + o.status + '</div>'
+          + btn
+          + callBtn
+          + '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    async function respondToOrder(orderId, accepted) {
+      await authFetch(`${window.API_BASE}/api/orders/${orderId}/respond`, {
+        method: 'PATCH',
+        body: JSON.stringify({ accepted })
+      });
+      loadMyOrders();
+    }
+
+    async function loadMyOrders() {
+      const res = await authFetch(window.API_BASE + '/api/orders/mine');
+      renderMyOrders(await res.json());
+    }
+
+    // Opens the device's camera (accept + capture hint the browser to go
+    // straight to the camera on mobile rather than a general file picker)
+    // and, once a photo is taken, sends it along with the status change
+    // in one request.
+    function triggerPhotoCapture(orderId, status) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'environment';
+      input.addEventListener('change', () => {
+        if (input.files && input.files[0]) {
+          updateOrderStatus(orderId, status, input.files[0]);
+        }
+      });
+      input.click();
+    }
+
+    async function updateOrderStatus(orderId, status, photoFile) {
+      let body;
+      if (photoFile) {
+        const formData = new FormData();
+        formData.append('status', status);
+        formData.append('photo', photoFile);
+        body = formData;
+      } else {
+        body = JSON.stringify({ status });
       }
 
-      btnCancelStep1.addEventListener('click', closeModals);
-      btnCancelStep2.addEventListener('click', closeModals);
+      const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Could not update order status.');
+      }
+      loadMyOrders();
+    }
 
-      // --- 1. LOGIN ---
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const submitBtn = document.getElementById('loginBtn');
-
-        loginStatus.style.color = '';
-        loginStatus.innerText = '';
-        setButtonLoading(submitBtn, true, 'Signing in...');
-
-        try {
-          const res = await fetch((window.API_BASE || '') + '/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-
-          const data = await res.json();
-          setButtonLoading(submitBtn, false);
-
-          if (data.success) {
-            localStorage.setItem('token', data.token);
-            loginStatus.style.color = '#4ade80';
-            loginStatus.innerText = 'Login successful! Redirecting...';
-            setTimeout(() => {
-              window.location.href = data.redirectUrl || '/customer.html';
-            }, 1000);
-          } else {
-            loginStatus.style.color = '#ff5d7a';
-            loginStatus.innerText = data.message || 'Invalid credentials.';
-          }
-        } catch (err) {
-          console.error(err);
-          setButtonLoading(submitBtn, false);
-          loginStatus.style.color = '#ff5d7a';
-          loginStatus.innerText = 'Server error. Please try again.';
+    // --- Session check (runs once on load) ---
+    authFetch(`${window.API_BASE}/api/check-session`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.loggedIn) {
+          window.location.href = '/login.html';
+        } else {
+          const driverInput = document.getElementById('driverId');
+          if (driverInput) driverInput.value = data.user.email;
+          loadMyOrders();
         }
       });
 
-      // --- 2. FORGOT PASSWORD ---
-      forgotPasswordBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        resetPasswordModal.classList.add('fx-open');
-        document.getElementById('stepRequestCode').style.display = 'block';
-        document.getElementById('stepSubmitReset').style.display = 'none';
-        resetModalStatus.innerText = '';
-      });
-
-      btnSendCode.addEventListener('click', async () => {
-        const email = document.getElementById('resetEmailInput').value.trim();
-
-        if (!email) {
-          resetModalStatus.style.color = '#ff5d7a';
-          resetModalStatus.innerText = 'Please enter your email.';
-          return;
-        }
-
-        resetModalStatus.style.color = '';
-        resetModalStatus.innerText = 'Sending request...';
-        setButtonLoading(btnSendCode, true, 'Sending...');
-
-        try {
-          const res = await fetch((window.API_BASE || '') + '/api/request-password-reset', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          });
-
-          const data = await res.json();
-          setButtonLoading(btnSendCode, false);
-
-          if (data.success) {
-            resetModalStatus.style.color = '#4ade80';
-            resetModalStatus.innerText = 'Code generated! Moving to step 2...';
-
-            setTimeout(() => {
-              document.getElementById('stepRequestCode').style.display = 'none';
-              document.getElementById('stepSubmitReset').style.display = 'block';
-              resetModalStatus.innerText = '';
-            }, 1000);
-          } else {
-            resetModalStatus.style.color = '#ff5d7a';
-            resetModalStatus.innerText = data.message || 'Error processing request.';
-          }
-        } catch (err) {
-          console.error(err);
-          setButtonLoading(btnSendCode, false);
-          resetModalStatus.style.color = '#ff5d7a';
-          resetModalStatus.innerText = 'Server error. Check server logs.';
-        }
-      });
-
-      btnResetPassword.addEventListener('click', async () => {
-        const email = document.getElementById('resetEmailInput').value.trim();
-        const resetCode = document.getElementById('resetCodeInput').value.trim();
-        const newPassword = document.getElementById('newPasswordInput').value.trim();
-
-        if (!resetCode || !newPassword) {
-          resetModalStatus.style.color = '#ff5d7a';
-          resetModalStatus.innerText = 'Please enter both the code and new password.';
-          return;
-        }
-
-        resetModalStatus.style.color = '';
-        resetModalStatus.innerText = 'Updating password...';
-        setButtonLoading(btnResetPassword, true, 'Updating...');
-
-        try {
-          const res = await fetch((window.API_BASE || '') + '/api/reset-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, resetCode, newPassword })
-          });
-
-          const data = await res.json();
-          setButtonLoading(btnResetPassword, false);
-
-          if (data.success) {
-            if (data.token) {
-              localStorage.setItem('token', data.token);
-            }
-            resetModalStatus.style.color = '#4ade80';
-            resetModalStatus.innerText = 'Password updated successfully!';
-            setTimeout(() => {
-              closeModals();
-              if (data.token) {
-                window.location.href = data.redirectUrl || '/customer.html';
-              } else {
-                alert('Password updated! You can now log in.');
-              }
-            }, 1200);
-          } else {
-            resetModalStatus.style.color = '#ff5d7a';
-            resetModalStatus.innerText = data.message || 'Failed to reset password.';
-          }
-        } catch (err) {
-          console.error(err);
-          setButtonLoading(btnResetPassword, false);
-          resetModalStatus.style.color = '#ff5d7a';
-          resetModalStatus.innerText = 'Server error. Please try again.';
-        }
-      });
+    // --- Live map + GPS tracking ---
+    const socket = io(window.API_BASE || undefined, {
+      auth: { token: getAuthToken() }
     });
+    socket.on('update_orders', renderMyOrders);
+
+    const map = L.map('map').setView([-20.1350, 28.5800], 15);
+    let marker = null;
+
+    addConfiguredTileLayer(map);
+
+    let hasFirstFix = false;
+
+    function startTracking(button) {
+      const driverId = document.getElementById('driverId').value;
+      if (!driverId) {
+        alert("Session not loaded yet. Please wait a second.");
+        return;
+      }
+
+      setButtonLoading(button, true, 'Requesting location permission...');
+      const statusBox = document.getElementById('connectionStatus');
+      statusBox.innerText = "Status: Connecting...";
+      statusBox.style.background = "";
+      statusBox.style.color = "";
+
+      watchLocation(
+        (lat, lng) => {
+          if (!hasFirstFix) {
+            hasFirstFix = true;
+            setButtonLoading(button, false);
+            statusBox.innerText = "Status: Online & Broadcasting Live";
+            statusBox.style.background = "rgba(74,222,128,0.12)";
+            statusBox.style.color = "#4ade80";
+            button.innerHTML = 'Live Tracking Active';
+            button.disabled = true;
+          }
+
+          map.setView([lat, lng], 16);
+
+          if (marker) {
+            marker.setLatLng([lat, lng]);
+          } else {
+            marker = L.marker([lat, lng]).addTo(map)
+              .bindPopup(`<b>${driverId}</b> (You)`)
+              .openPopup();
+          }
+
+          socket.emit('driver_connect', { driverId, lat, lng });
+        },
+        (err) => {
+          setButtonLoading(button, false);
+          statusBox.innerText = "Status: Offline";
+          statusBox.style.background = "";
+          statusBox.style.color = "";
+          alert("Error tracking location: " + err.message);
+        }
+      );
+    }
+
+    initSupportWidget();
+    initNotificationCenter();
+    renderNavAvatar('navAvatarContainer');
   </script>
+
 </body>
 </html>
