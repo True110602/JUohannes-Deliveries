@@ -1,415 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="/js/config.js"></script>
-<script src="/js/ui-helpers.js"></script>
-<script>
-  (async function verifyAuth() {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.location.href = '/index.html';
-      return;
-    }
-    try {
-      const res = await fetch((window.API_BASE || '') + '/api/check-session', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      const data = await res.json();
-      if (!res.ok || !data.loggedIn) {
-        localStorage.removeItem('token');
-        window.location.href = '/index.html';
-      } else if (data.user.role !== 'admin') {
-        window.location.href = data.redirectUrl || '/customer.html';
-      }
-    } catch (err) {
-      console.error('Session validation error:', err);
-    }
-  })();
-
-  function logoutAdmin() {
-    clearAuthToken();
-    window.location.href = '/login.html';
-  }
-</script>
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Johannes Deliveries - Admin Dashboard</title>
-<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <script src="/socket.io/socket.io.js"></script>
-  <link rel="stylesheet" href="/css/theme.css" />
-  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
+    .page-title { font-size: 28px; font-weight: 700; margin: 0 0 25px 0; color: #333; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card-title { font-size: 12px; color: #999; text-transform: uppercase; font-weight: 600; margin-bottom: 10px; }
+    .card-value { font-size: 32px; font-weight: 700; color: #667eea; margin-bottom: 15px; }
+    .btn { display: inline-block; padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; font-weight: 600; margin-top: 10px; }
+    .btn:hover { background: #764ba2; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-secondary:hover { background: #e0e0e0; }
+  </style>
 </head>
 <body>
 
-  <div class="fx-shell" style="max-width: 1200px;">
-    <div class="fx-nav">
-      <div class="fx-nav-title">
-        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
-        <div>
-          <span class="fx-pill">Admin</span>
-          <h2 style="margin:6px 0 0;">Fleet & orders dashboard</h2>
-        </div>
-      </div>
-      <span id="navAvatarContainer"></span>
-      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
-      <button class="fx-btn-danger" style="width:auto;" onclick="logoutAdmin()">Logout</button>
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="navbar-left">
+    <button class="hamburger" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <a href="/" class="navbar-logo">📦 JUohannes</a>
+  </div>
+  <div class="navbar-right">
+    <div class="notification-icon" onclick="alert('Admin alerts')" style="cursor:pointer;">
+      🔔
+      <span class="notification-badge">5</span>
     </div>
+    <div class="profile-icon" onclick="window.location.href='account.html'" style="cursor:pointer;">👤</div>
+  </div>
+</nav>
 
-    <div class="dashboard-grid">
-
-      <div class="section fx-card">
-        <div class="fx-eyebrow">Live tracking</div>
-        <h3 style="margin-top:0;">Driver fleet</h3>
-        <div id="map"></div>
-        <p class="fx-muted" id="fleetCount" style="margin-top:10px;">Waiting for driver positions...</p>
+<!-- SIDEBAR -->
+<aside class="sidebar hidden">
+  
+  <!-- User Header -->
+  <div class="sidebar-header">
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar">AD</div>
+      <div class="sidebar-user-info">
+        <h3>Administrator</h3>
+        <p id="userEmail">admin@example.com</p>
       </div>
-
-      <div class="section fx-card">
-        <div class="fx-eyebrow">Operations</div>
-        <h3 style="margin-top:0;">Orders</h3>
-        <div class="fx-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Item</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Driver</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="ordersTableBody">
-              <tr><td colspan="6" class="fx-muted">Loading orders...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="section fx-card" style="flex-basis: 100%;">
-        <div class="fx-eyebrow">Moderation</div>
-        <h3 style="margin-top:0;">Merchant approvals</h3>
-        <p class="fx-muted" style="margin-top:0;">New merchants can't list items publicly until approved here.</p>
-        <div id="merchantApprovalsList"><span class="inline-spinner fx-spinner-light"></span>Loading merchants...</div>
-      </div>
-
-      <div class="section fx-card fx-broadcast-form" style="flex-basis: 100%;">
-        <div class="fx-eyebrow">Announcements</div>
-        <h3 style="margin-top:0;">Broadcast a message</h3>
-        <p class="fx-muted" style="margin-top:0;">Sends as a notification to everyone in the chosen group, live if they're online and waiting for them if not.</p>
-        <form id="broadcastForm">
-          <label>Send to</label>
-          <select id="broadcastTarget">
-            <option value="all">Everyone</option>
-            <option value="customer">Customers only</option>
-            <option value="driver">Drivers only</option>
-            <option value="merchant">Merchants only</option>
-          </select>
-          <label>Title</label>
-          <input type="text" id="broadcastTitle" required placeholder="e.g. Scheduled maintenance tonight">
-          <label>Message</label>
-          <textarea id="broadcastMessage" required rows="3" placeholder="What do you want them to know?"></textarea>
-          <button type="submit" style="margin-top:10px; width:auto;">Send announcement</button>
-        </form>
-        <p id="broadcastStatus" class="fx-muted" style="margin-top:8px;"></p>
-      </div>
-
-      <div class="section fx-card" style="flex-basis: 100%;">
-        <div class="fx-eyebrow">Support</div>
-        <h3 style="margin-top:0;">Support tickets</h3>
-        <p class="fx-muted" style="margin-top:0;">Reports submitted from the "Report an issue" button on customer/driver/merchant pages.</p>
-        <select id="supportStatusFilter" style="width:auto; padding:6px 10px; margin-bottom:10px;" onchange="loadSupportTickets()">
-          <option value="">All statuses</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In progress</option>
-          <option value="resolved">Resolved</option>
-        </select>
-        <div class="fx-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>From</th>
-                <th>Subject</th>
-                <th>Message</th>
-                <th>Status</th>
-                <th>Reported</th>
-              </tr>
-            </thead>
-            <tbody id="supportTicketsBody">
-              <tr><td colspan="5" class="fx-muted">Loading tickets...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
     </div>
   </div>
 
-  <script src="/vendor/leaflet/leaflet.js"></script>
-  <script>
-    const map = L.map('map').setView([-20.1350, 28.5800], 13);
-    addConfiguredTileLayer(map);
+  <!-- Statistics -->
+  <div class="sidebar-stats">
+    <div class="stat-item">
+      <div class="stat-label">👥 Active Users</div>
+      <div class="stat-value" data-stat="activeUsers">0</div>
+      <div class="stat-change">online</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">📦 Total Orders</div>
+      <div class="stat-value" data-stat="totalOrders">0</div>
+      <div class="stat-change">all time</div>
+    </div>
+  </div>
 
-    const driverMarkers = {};
+  <!-- Menu -->
+  <ul class="sidebar-menu">
+    
+    <li class="menu-section-title">MAIN</li>
+    <li class="menu-item">
+      <a href="admin.html" class="menu-link active">
+        <span class="menu-icon">📊</span>
+        Dashboard
+      </a>
+    </li>
 
-    function upsertDriverMarker(d) {
-      if (driverMarkers[d.driverId]) {
-        driverMarkers[d.driverId].setLatLng([d.lat, d.lng]);
-      } else {
-        driverMarkers[d.driverId] = L.marker([d.lat, d.lng]).addTo(map)
-          .bindPopup(`<b>${d.driverId}</b>`);
+    <li class="menu-section-title">MANAGEMENT</li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">👥</span>
+        Users
+        <span class="menu-badge" id="userBadge" style="display:none;">0</span>
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">🏪</span>
+        Merchants
+        <span class="menu-badge" id="merchantBadge" style="display:none;">0</span>
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">🚗</span>
+        Drivers
+        <span class="menu-badge" id="driverBadge" style="display:none;">0</span>
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📦</span>
+        Orders
+      </a>
+    </li>
+
+    <li class="menu-section-title">ANALYTICS</li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📈</span>
+        Reports
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📋</span>
+        Logs
+      </a>
+    </li>
+
+    <li class="menu-section-title">ACCOUNT</li>
+    <li class="menu-item">
+      <a href="account.html" class="menu-link">
+        <span class="menu-icon">⚙️</span>
+        Settings
+      </a>
+    </li>
+    
+  </ul>
+
+  <!-- Footer -->
+  <div class="sidebar-footer">
+    <a href="login.html" class="sidebar-footer-link logout">
+      <span>🚪</span> Logout
+    </a>
+  </div>
+
+</aside>
+
+<!-- OVERLAY -->
+<div class="sidebar-overlay"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  
+  <h1 class="page-title">System Overview 📊</h1>
+
+  <!-- Main Stats -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <div class="card-title">👥 Active Users</div>
+      <div class="card-value" data-stat="activeUsers">0</div>
+      <a href="#" class="btn btn-secondary">View All</a>
+    </div>
+    <div class="card">
+      <div class="card-title">🏪 Merchants</div>
+      <div class="card-value" data-stat="totalMerchants">0</div>
+      <a href="#" class="btn btn-secondary">Manage</a>
+    </div>
+    <div class="card">
+      <div class="card-title">🚗 Drivers</div>
+      <div class="card-value" data-stat="totalDrivers">0</div>
+      <a href="#" class="btn btn-secondary">Manage</a>
+    </div>
+    <div class="card">
+      <div class="card-title">📦 Total Orders</div>
+      <div class="card-value" data-stat="totalOrders">0</div>
+      <a href="#" class="btn btn-secondary">View</a>
+    </div>
+  </div>
+
+  <!-- Revenue Stats -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <div class="card-title">💰 Total Revenue</div>
+      <div class="card-value" data-stat="totalRevenue">$0.00</div>
+      <a href="#" class="btn btn-secondary">Revenue Report</a>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 Avg Order Value</div>
+      <div class="card-value" data-stat="avgOrderValue">$0.00</div>
+      <a href="#" class="btn btn-secondary">Details</a>
+    </div>
+    <div class="card">
+      <div class="card-title">⭐ Avg Rating</div>
+      <div class="card-value" data-stat="avgRating">4.8</div>
+      <a href="#" class="btn btn-secondary">Reviews</a>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ Success Rate</div>
+      <div class="card-value" data-stat="successRate">98%</div>
+      <a href="#" class="btn btn-secondary">Details</a>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="card">
+    <h2 class="card-title">⚡ Quick Actions</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+      <a href="#" class="btn btn-secondary">👥 Manage Users</a>
+      <a href="#" class="btn btn-secondary">🏪 Manage Merchants</a>
+      <a href="#" class="btn btn-secondary">🚗 Manage Drivers</a>
+      <a href="#" class="btn btn-secondary">📋 View Logs</a>
+    </div>
+  </div>
+
+</main>
+
+<script src="/js/menu.js"></script>
+<script>
+  // ADMIN DASHBOARD SCRIPT
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    setInterval(loadStats, 30000);
+  });
+
+  async function loadStats() {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        updateAllStats('activeUsers', data.activeUsers || 0);
+        updateAllStats('totalMerchants', data.totalMerchants || 0);
+        updateAllStats('totalDrivers', data.totalDrivers || 0);
+        updateAllStats('totalOrders', data.totalOrders || 0);
+        updateAllStats('totalRevenue', '$' + (data.totalRevenue || 0).toFixed(2));
+        updateAllStats('avgOrderValue', '$' + (data.avgOrderValue || 0).toFixed(2));
+        updateAllStats('avgRating', (data.avgRating || 4.8).toFixed(1));
+        updateAllStats('successRate', (data.successRate || 98) + '%');
       }
+    } catch (err) {
+      console.error('Error loading stats:', err);
     }
+  }
 
-    const socket = io(window.API_BASE || undefined, {
-      auth: { token: getAuthToken() }
+  function updateAllStats(key, value) {
+    document.querySelectorAll(`[data-stat="${key}"]`).forEach(el => {
+      el.textContent = value;
     });
+  }
+</script>
 
-    socket.on('update_fleet', (drivers) => {
-      document.getElementById('fleetCount').innerText =
-        drivers.length ? `${drivers.length} driver(s) currently tracked.` : 'No drivers are currently broadcasting location.';
-      drivers.forEach(upsertDriverMarker);
-    });
-
-    socket.on('update_orders', (orders) => renderOrders(orders));
-
-    // ---- Orders ----
-    let driverListCache = null;
-
-    function statusBadge(status) {
-      return `<span class="status-badge status-${status}">${status.replace('_',' ')}</span>`;
-    }
-
-    async function assignDriver(orderId, selectEl) {
-      const driverEmail = selectEl.value;
-      if (!driverEmail) return;
-      selectEl.disabled = true;
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/assign`, {
-          method: 'PATCH',
-          body: JSON.stringify({ driverEmail })
-        });
-        const data = await res.json();
-        if (!data.success) {
-          showToast(data.message || 'Could not assign driver.', 'error');
-          selectEl.disabled = false;
-        }
-      } catch (err) {
-        showToast('Server error assigning driver.', 'error');
-        selectEl.disabled = false;
-      }
-    }
-
-    async function updateStatus(orderId, status) {
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status })
-        });
-        const data = await res.json();
-        if (!data.success) showToast(data.message || 'Could not update status.', 'error');
-      } catch (err) {
-        showToast('Server error updating status.', 'error');
-      }
-    }
-
-    function driverResponseBadge(o) {
-      if (!o.assignedDriver) return '';
-      if (o.driverAccepted === true) return '<div class="fx-muted" style="font-size:11px; color:#4ade80;">Accepted</div>';
-      if (o.driverAccepted === false) return '<div class="fx-muted" style="font-size:11px; color:#ff5d7a;">Declined</div>';
-      return '<div class="fx-muted" style="font-size:11px; color:#f59e0b;">Awaiting response</div>';
-    }
-
-    function renderOrders(orders) {
-      const tbody = document.getElementById('ordersTableBody');
-      if (!orders.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="fx-muted">No orders yet.</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = orders.map(o => `
-        <tr>
-          <td>${o.customerName}<div class="fx-muted" style="font-size:11.5px;">${o.pickup} &rarr; ${o.dropoff}</div></td>
-          <td>${o.item || '<i>-</i>'}</td>
-          <td>$${(o.amount || 0).toFixed(2)}</td>
-          <td>${statusBadge(o.status)}${(o.pickupPhotoUrl || o.deliveryPhotoUrl) ? `
-            <div style="display:flex; gap:4px; margin-top:4px;">
-              ${o.pickupPhotoUrl ? `<img src="${o.pickupPhotoUrl.startsWith('http') ? o.pickupPhotoUrl : window.API_BASE + o.pickupPhotoUrl}" title="Pickup photo" style="width:32px; height:32px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="window.open(this.src,'_blank')">` : ''}
-              ${o.deliveryPhotoUrl ? `<img src="${o.deliveryPhotoUrl.startsWith('http') ? o.deliveryPhotoUrl : window.API_BASE + o.deliveryPhotoUrl}" title="Delivery photo" style="width:32px; height:32px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="window.open(this.src,'_blank')">` : ''}
-            </div>
-          ` : ''}</td>
-          <td>${o.assignedDriver || '<i>Unassigned</i>'}${driverResponseBadge(o)}</td>
-          <td>
-            <select onchange="assignDriver('${o._id}', this)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
-              <option value="">Assign driver...</option>
-              ${(driverListCache || []).map(d => `<option value="${d}" ${o.assignedDriver === d ? 'selected' : ''}>${d}</option>`).join('')}
-            </select>
-            <select onchange="updateStatus('${o._id}', this.value)" style="width:auto; padding:4px 6px; margin:4px 0 0; font-size:12px;">
-              <option value="">Set status...</option>
-              ${['pending','assigned','picked_up','delivered','cancelled','failed'].map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.replace('_',' ')}</option>`).join('')}
-            </select>
-          </td>
-        </tr>
-      `).join('');
-    }
-
-    // Previously this list was built only from orders that already had a
-    // driver assigned - meaning there was no way to assign a driver for
-    // the very first time (empty dropdown, nothing to pick). It now comes
-    // from the actual registered drivers.
-    async function loadDrivers() {
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/admin/drivers`);
-        driverListCache = await res.json();
-      } catch (err) {
-        console.error('Could not load driver list', err);
-        driverListCache = [];
-      }
-    }
-
-    async function loadOrders() {
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/orders`);
-        const orders = await res.json();
-        renderOrders(orders);
-      } catch (err) {
-        document.getElementById('ordersTableBody').innerHTML = '<tr><td colspan="6" class="fx-muted">Could not load orders.</td></tr>';
-      }
-    }
-
-    async function loadMerchantApprovals() {
-      const list = document.getElementById('merchantApprovalsList');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/admin/merchants`);
-        const merchants = await res.json();
-
-        if (!merchants.length) {
-          list.innerHTML = '<i class="fx-muted">No merchants registered yet.</i>';
-          return;
-        }
-
-        list.innerHTML = merchants.map(m => `
-          <div class="fx-card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <b>${m.shopName || m.email}</b>
-              <span class="fx-pill" style="margin-left:6px; font-size:10.5px; padding:2px 8px;">${m.shopCategory || 'Other'}</span>
-              <div class="fx-muted" style="font-size:12px;">${m.email}</div>
-            </div>
-            ${m.approved
-              ? '<span class="fx-pill" style="background:rgba(74,222,128,0.15); color:#4ade80;">Approved</span>'
-              : `<button style="width:auto;" onclick="approveMerchant('${m._id}', this)">Approve</button>`
-            }
-          </div>
-        `).join('');
-      } catch (err) {
-        list.innerHTML = '<i class="fx-muted">Could not load merchants.</i>';
-      }
-    }
-
-    async function approveMerchant(id, btn) {
-      setButtonLoading(btn, true, 'Approving...');
-      try {
-        await authFetch(`${window.API_BASE}/api/admin/merchants/${id}/approve`, { method: 'PATCH' });
-        loadMerchantApprovals();
-      } catch (err) {
-        setButtonLoading(btn, false);
-        alert('Could not approve merchant.');
-      }
-    }
-
-    // ---- Broadcast announcements ----
-    document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const status = document.getElementById('broadcastStatus');
-      const submitBtn = e.target.querySelector('button[type="submit"]');
-      setButtonLoading(submitBtn, true, 'Sending...');
-      status.innerText = '';
-
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/admin/broadcast`, {
-          method: 'POST',
-          body: JSON.stringify({
-            targetRole: document.getElementById('broadcastTarget').value,
-            title: document.getElementById('broadcastTitle').value,
-            message: document.getElementById('broadcastMessage').value
-          })
-        });
-        const data = await res.json();
-        setButtonLoading(submitBtn, false);
-        if (data.success) {
-          status.style.color = '#4ade80';
-          status.innerText = `Sent to ${data.sentTo} recipient${data.sentTo === 1 ? '' : 's'}.`;
-          e.target.reset();
-        } else {
-          status.style.color = '#ff5d7a';
-          status.innerText = data.message || 'Could not send announcement.';
-        }
-      } catch (err) {
-        setButtonLoading(submitBtn, false);
-        status.style.color = '#ff5d7a';
-        status.innerText = 'Server error sending announcement.';
-      }
-    });
-
-    // ---- Support tickets ----
-    function ticketStatusOptions(current) {
-      return ['open', 'in_progress', 'resolved']
-        .map(s => `<option value="${s}" ${current === s ? 'selected' : ''}>${s.replace('_', ' ')}</option>`)
-        .join('');
-    }
-
-    async function loadSupportTickets() {
-      const body = document.getElementById('supportTicketsBody');
-      const status = document.getElementById('supportStatusFilter').value;
-      try {
-        const qs = status ? `?status=${status}` : '';
-        const res = await authFetch(`${window.API_BASE}/api/support${qs}`);
-        const tickets = await res.json();
-
-        if (!tickets.length) {
-          body.innerHTML = '<tr><td colspan="5" class="fx-muted">No tickets here.</td></tr>';
-          return;
-        }
-
-        body.innerHTML = tickets.map(t => `
-          <tr>
-            <td>${escapeHtml(t.name) || '<i>Guest</i>'}<div class="fx-muted" style="font-size:11px;">${escapeHtml(t.role)}${t.email ? ' &middot; ' + escapeHtml(t.email) : ''}</div></td>
-            <td>${escapeHtml(t.subject)}</td>
-            <td style="max-width:280px; white-space:normal;">${escapeHtml(t.message)}</td>
-            <td>
-              <select onchange="updateTicketStatus('${t._id}', this.value)" style="width:auto; padding:4px 6px; margin:0; font-size:12px;">
-                ${ticketStatusOptions(t.status)}
-              </select>
-            </td>
-            <td class="fx-muted" style="font-size:12px;">${new Date(t.createdAt).toLocaleString()}</td>
-          </tr>
-        `).join('');
-      } catch (err) {
-        body.innerHTML = '<tr><td colspan="5" class="fx-muted">Could not load tickets.</td></tr>';
-      }
-    }
-
-    async function updateTicketStatus(id, status) {
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/support/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status })
-        });
-        const data = await res.json();
-        if (!data.success) showToast(data.message || 'Could not update ticket.', 'error');
-      } catch (err) {
-        showToast('Server error updating ticket.', 'error');
-      }
-    }
-
-    loadDrivers().then(loadOrders);
-    loadMerchantApprovals();
-    loadSupportTickets();
-    initNotificationCenter();
-    renderNavAvatar('navAvatarContainer');
-  </script>
 </body>
 </html>
