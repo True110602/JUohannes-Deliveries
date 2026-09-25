@@ -2,128 +2,156 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Register - Johannes Deliveries</title>
-  <link rel="stylesheet" href="/css/theme.css" />
-  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/theme.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .register-container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 450px; padding: 40px; }
+    .register-header { text-align: center; margin-bottom: 30px; }
+    .register-logo { font-size: 48px; margin-bottom: 10px; }
+    .register-title { font-size: 28px; font-weight: 700; color: #333; margin-bottom: 5px; }
+    .register-subtitle { font-size: 14px; color: #999; }
+    .form-group { margin-bottom: 18px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .form-input, .form-select { width: 100%; padding: 12px 15px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; transition: all 0.2s; }
+    .form-input:focus, .form-select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .form-button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .form-button:hover { background: #764ba2; }
+    .form-footer { text-align: center; margin-top: 20px; font-size: 13px; color: #666; }
+    .form-footer a { color: #667eea; text-decoration: none; font-weight: 600; }
+    .error-message { color: #e74c3c; font-size: 13px; margin-top: 5px; }
+    .success-message { color: #27ae60; font-size: 13px; margin-top: 5px; }
+  </style>
 </head>
 <body>
-  <div class="fx-shell fx-center">
-  <div style="width:100%; max-width:420px;">
 
-    <div class="fx-brand">
-      <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
-      <div class="fx-brand-text"><b>Johannes</b> Deliveries</div>
-    </div>
-
-    <div class="fx-card">
-      <div class="fx-eyebrow fx-center-text">Get started</div>
-      <h2 class="fx-center-text" style="margin-top:0;">Create your account</h2>
-      <div id="msg" class="error"></div>
-
-      <form id="registerForm">
-        <label>Account Type</label>
-        <select name="role" required>
-          <option value="customer">Customer</option>
-          <option value="driver">Driver</option>
-          <option value="merchant">Merchant / Restaurant</option>
-        </select>
-
-        <label>Full Name</label>
-        <input type="text" name="name" required placeholder="e.g. Bhekinkosi Sibanda">
-
-        <label>Email Address / Username</label>
-        <input type="text" name="email" required placeholder="e.g. driver or name@example.com">
-
-        <label>Phone Number</label>
-        <input type="tel" name="phone" required placeholder="e.g. 0771234567">
-
-        <label>Password</label>
-        <input type="password" name="password" required placeholder="••••••••">
-
-        <label>Physical Address</label>
-        <input type="text" name="address" required placeholder="e.g. Bulawayo CBD">
-
-        <label>Preferred Payment Method</label>
-        <select name="paymentMethod" required>
-          <option value="Cash">Cash on Delivery</option>
-          <option value="EcoCash">EcoCash</option>
-          <option value="OneMoney">OneMoney</option>
-          <option value="BankTransfer">Bank Transfer</option>
-          <option value="Card">Card</option>
-        </select>
-
-        <label>Referral Code <span class="fx-muted" style="font-weight:400;">(optional)</span></label>
-        <input type="text" name="referralCode" id="referralCodeInput" placeholder="e.g. BHEKI4821" style="text-transform:uppercase;">
-        <p class="fx-muted" id="referralHint" style="margin-top:-8px; font-size:12px; display:none;">Get 10% off your first order!</p>
-
-        <button type="submit" id="submitBtn" style="margin-top:18px;">Create Account</button>
-      </form>
-      <p class="fx-center-text fx-muted" style="margin-top:15px;">Already have an account? <a href="login.html" class="fx-link">Login here</a></p>
-    </div>
-  </div>
+<div class="register-container">
+  
+  <div class="register-header">
+    <div class="register-logo">📦</div>
+    <h1 class="register-title">Join JUohannes</h1>
+    <p class="register-subtitle">Create your account</p>
   </div>
 
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
-  <script>
-    // Pre-fill the referral code from a shared invite link like
-    // /register.html?ref=BHEKI4821 (see account.html's "Copy invite link").
-    (function prefillReferralCode() {
-      const ref = new URLSearchParams(window.location.search).get('ref');
-      if (ref) {
-        document.getElementById('referralCodeInput').value = ref.toUpperCase();
-        document.getElementById('referralHint').style.display = 'block';
+  <form id="registerForm">
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" id="firstName" class="form-input" placeholder="John" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Last Name</label>
+        <input type="text" id="lastName" class="form-input" placeholder="Doe" required>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Email Address</label>
+      <input type="email" id="email" class="form-input" placeholder="you@example.com" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Phone Number</label>
+      <input type="tel" id="phone" class="form-input" placeholder="+263 712 345 678" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">I am a...</label>
+      <select id="role" class="form-select" required>
+        <option value="">-- Select your role --</option>
+        <option value="customer">Customer (Food Delivery)</option>
+        <option value="merchant">Merchant (Restaurant)</option>
+        <option value="driver">Driver (Delivery Partner)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+      <small style="color: #999; display: block; margin-top: 5px;">Min 6 characters</small>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Confirm Password</label>
+      <input type="password" id="confirmPassword" class="form-input" placeholder="••••••••" required>
+    </div>
+
+    <button type="submit" class="form-button">Create Account</button>
+
+    <div id="registerError" class="error-message" style="text-align: center; margin-top: 15px;"></div>
+    <div id="registerSuccess" class="success-message" style="text-align: center; margin-top: 15px;"></div>
+
+  </form>
+
+  <div class="form-footer">
+    <p>Already have an account? <a href="login.html">Sign in</a></p>
+  </div>
+
+</div>
+
+<script src="/js/config.js"></script>
+<script>
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const firstName = document.getElementById('firstName').value;
+    const lastName = document.getElementById('lastName').value;
+    const email = document.getElementById('email').value;
+    const phone = document.getElementById('phone').value;
+    const role = document.getElementById('role').value;
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const errorDiv = document.getElementById('registerError');
+    const successDiv = document.getElementById('registerSuccess');
+
+    errorDiv.textContent = '';
+    successDiv.textContent = '';
+
+    // Validate
+    if (password !== confirmPassword) {
+      errorDiv.textContent = 'Passwords do not match';
+      return;
+    }
+
+    if (password.length < 6) {
+      errorDiv.textContent = 'Password must be at least 6 characters';
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          phone,
+          role,
+          password
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        successDiv.textContent = 'Account created! Redirecting to login...';
+        setTimeout(() => {
+          window.location.href = 'login.html';
+        }, 2000);
+      } else {
+        errorDiv.textContent = data.message || 'Registration failed. Please try again.';
       }
-    })();
-    document.getElementById('referralCodeInput').addEventListener('input', (e) => {
-      document.getElementById('referralHint').style.display = e.target.value.trim() ? 'block' : 'none';
-    });
+    } catch (err) {
+      errorDiv.textContent = 'Connection error. Please try again.';
+      console.error('Register error:', err);
+    }
+  });
+</script>
 
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const formData = new FormData(e.target);
-      const payload = Object.fromEntries(formData.entries());
-      const msgDiv = document.getElementById('msg');
-      const submitBtn = document.getElementById('submitBtn');
-
-      msgDiv.className = 'error';
-      msgDiv.innerText = '';
-      setButtonLoading(submitBtn, true, 'Creating Account...');
-
-      try {
-        const baseUrl = window.API_BASE || '';
-        const res = await fetch(`${baseUrl}/api/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-          setButtonLoading(submitBtn, false);
-          msgDiv.className = 'success';
-          msgDiv.innerText = 'Registration successful! Redirecting to login...';
-          setTimeout(() => {
-            window.location.href = '/login.html';
-          }, 1500);
-        } else {
-          setButtonLoading(submitBtn, false);
-          msgDiv.className = 'error';
-          msgDiv.innerText = data.message || 'Registration failed. Please try again.';
-        }
-      } catch (err) {
-        console.error('Registration error:', err);
-        setButtonLoading(submitBtn, false);
-        msgDiv.className = 'error';
-        msgDiv.innerText = 'Server connection error. Please check Render backend status.';
-      }
-    });
-  </script>
 </body>
 </html>
