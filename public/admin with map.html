@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - JUohannes Deliveries</title>
   <link rel="stylesheet" href="/css/menu.css">
+  <!-- LEAFLET MAP -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
     .page-title { font-size: 28px; font-weight: 700; margin: 0 0 25px 0; color: #333; }
@@ -16,6 +19,8 @@
     .btn:hover { background: #764ba2; }
     .btn-secondary { background: #f0f0f0; color: #333; }
     .btn-secondary:hover { background: #e0e0e0; }
+    .map-container { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 30px; }
+    #map { height: 400px; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -148,6 +153,12 @@
   
   <h1 class="page-title">System Overview 📊</h1>
 
+  <!-- REAL-TIME DRIVER MAP -->
+  <div class="map-container">
+    <h2 class="card-title">🗺️ Real-Time Driver Locations</h2>
+    <div id="map"></div>
+  </div>
+
   <!-- Main Stats -->
   <div class="dashboard-grid">
     <div class="card">
@@ -211,12 +222,67 @@
 
 <script src="/js/menu.js"></script>
 <script>
-  // ADMIN DASHBOARD SCRIPT
+  // ADMIN DASHBOARD WITH REAL-TIME MAP
   
+  let map;
+  let driverMarkers = {};
+
   document.addEventListener('DOMContentLoaded', () => {
+    initMap();
     loadStats();
+    loadDriverLocations();
     setInterval(loadStats, 30000);
+    setInterval(loadDriverLocations, 10000); // Update driver positions every 10s
   });
+
+  function initMap() {
+    try {
+      // Default to Johannesburg, South Africa
+      const defaultCenter = [-26.2023, 28.0436];
+      
+      map = L.map('map').setView(defaultCenter, 12);
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+      
+      console.log('✅ Map initialized successfully');
+    } catch (err) {
+      console.error('❌ Map initialization error:', err);
+      document.getElementById('map').innerHTML = '<p style="padding:20px;color:red;">Map failed to load</p>';
+    }
+  }
+
+  async function loadDriverLocations() {
+    if (!map) return;
+    
+    try {
+      const response = await fetch('/api/admin/drivers-locations');
+      const data = await response.json();
+
+      if (data.success && data.drivers) {
+        data.drivers.forEach(driver => {
+          const key = driver._id;
+          
+          if (driver.latitude && driver.longitude) {
+            if (driverMarkers[key]) {
+              // Update existing marker position
+              driverMarkers[key].setLatLng([driver.latitude, driver.longitude]);
+            } else {
+              // Create new marker
+              const marker = L.marker([driver.latitude, driver.longitude])
+                .bindPopup(`<b>🚗 ${driver.driverName}</b><br>Status: ${driver.status || 'Unknown'}<br>Phone: ${driver.phone || 'N/A'}`)
+                .addTo(map);
+              driverMarkers[key] = marker;
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error loading driver locations:', err);
+    }
+  }
 
   async function loadStats() {
     const token = localStorage.getItem('adminToken');
