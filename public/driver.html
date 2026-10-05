@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Driver Dashboard - JUohannes Deliveries</title>
   <link rel="stylesheet" href="/css/menu.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
     .page-title { font-size: 28px; font-weight: 700; margin: 0 0 25px 0; color: #333; }
@@ -13,9 +13,12 @@
     .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     .card-title { font-size: 12px; color: #999; text-transform: uppercase; font-weight: 600; margin-bottom: 10px; }
     .card-value { font-size: 32px; font-weight: 700; color: #667eea; margin-bottom: 15px; }
-    #map { height: 400px; border-radius: 8px; }
+    #map { height: 500px; border-radius: 8px; background: #f0f0f0; }
     .btn { display: inline-block; padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; font-weight: 600; margin-top: 10px; }
     .btn:hover { background: #764ba2; }
+    .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #4CAF50; margin-right: 8px; }
+    .status-offline { background: #f44336; }
+    .location-status { font-size: 12px; color: #666; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -152,70 +155,200 @@
 
   <!-- Map -->
   <div class="card">
-    <h2 class="card-title">📍 Your Location</h2>
+    <h2 class="card-title">📍 Your Location
+      <span class="status-indicator" id="locationStatus"></span>
+      <span id="locationStatusText" class="location-status">Connecting...</span>
+    </h2>
     <div id="map"></div>
   </div>
 
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script src="/js/menu.js"></script>
-<script src="/js/geo-helpers.js"></script>
 <script>
   // DRIVER DASHBOARD SCRIPT
   
   let map;
   let userMarker;
   let socket;
+  let geolocationWatchId;
+  let lastLocation = { lat: -26.2023, lng: 28.0436 }; // Johannesburg default
 
   document.addEventListener('DOMContentLoaded', () => {
     loadUserInfo();
     loadStats();
     initMap();
     connectSocket();
+    startLocationTracking();
     setInterval(loadStats, 30000);
   });
 
   function loadUserInfo() {
-    const email = localStorage.getItem('driverEmail') || 'driver@example.com';
-    const name = email.split('@')[0];
-    const initials = name.substring(0, 2).toUpperCase();
-    
-    document.getElementById('userName').textContent = name;
-    document.getElementById('userEmail').textContent = email;
-    document.getElementById('userAvatar').textContent = initials;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return;
+      
+      const payload = JSON.parse(atob(parts[1]));
+      const email = payload.email || localStorage.getItem('driverEmail') || 'driver@example.com';
+      const name = payload.email ? payload.email.split('@')[0] : 'Driver';
+      const initials = name.substring(0, 2).toUpperCase();
+      
+      document.getElementById('userName').textContent = name;
+      document.getElementById('userEmail').textContent = email;
+      document.getElementById('userAvatar').textContent = initials;
+    } catch (err) {
+      console.error('Error parsing user info:', err);
+    }
   }
 
   function initMap() {
-    map = L.map('map').setView([-17.8252, 31.0335], 13); // Harare center
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19
-    }).addTo(map);
+    try {
+      // Default to Johannesburg
+      map = L.map('map').setView([lastLocation.lat, lastLocation.lng], 14);
+      
+      // Use OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
 
-    userMarker = L.circleMarker([-17.8252, 31.0335], {
-      radius: 8,
-      fillColor: '#667eea',
-      color: '#fff',
-      weight: 3,
-      opacity: 1,
-      fillOpacity: 0.8
-    }).addTo(map);
+      // Create a blue marker for driver location
+      userMarker = L.circleMarker([lastLocation.lat, lastLocation.lng], {
+        radius: 10,
+        fillColor: '#667eea',
+        color: '#fff',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 0.8
+      }).bindPopup('📍 Your Location').addTo(map);
 
-    // Request location permission
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        userMarker.setLatLng([lat, lng]);
-        map.setView([lat, lng], 13);
+      console.log('✅ Driver map initialized');
+    } catch (err) {
+      console.error('❌ Map initialization error:', err);
+    }
+  }
+
+  function startLocationTracking() {
+    if (!navigator.geolocation) {
+      console.error('Geolocation not supported');
+      updateLocationStatus('Geolocation not available', false);
+      return;
+    }
+
+    console.log('Starting geolocation tracking...');
+    updateLocationStatus('Acquiring location...', true);
+
+    // Get initial position with high accuracy
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
         
-        // Send location to server
-        if (socket) {
-          socket.emit('driver_position', { lat, lng });
+        lastLocation = { lat, lng };
+        
+        // Update map
+        if (map && userMarker) {
+          userMarker.setLatLng([lat, lng]);
+          map.setView([lat, lng], 14);
         }
-      });
+
+        // Send to server
+        if (socket && socket.connected) {
+          sendLocationUpdate(lat, lng);
+        }
+
+        console.log(`✅ Location acquired: ${lat.toFixed(4)}, ${lng.toFixed(4)} (±${accuracy.toFixed(0)}m)`);
+        updateLocationStatus('Location tracking active', true);
+      },
+      (error) => {
+        console.error('Geolocation error:', error.message);
+        updateLocationStatus('Location error: ' + error.message, false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 0
+      }
+    );
+
+    // Watch position for continuous updates every 30 seconds
+    geolocationWatchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        lastLocation = { lat, lng };
+        
+        // Update marker
+        if (map && userMarker) {
+          userMarker.setLatLng([lat, lng]);
+        }
+
+        // Send location to server via Socket.io
+        if (socket && socket.connected) {
+          sendLocationUpdate(lat, lng);
+        }
+
+        console.log(`📍 Location updated: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      },
+      (error) => {
+        console.error('Location watch error:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 5000 // Allow cached position up to 5 seconds old
+      }
+    );
+  }
+
+  function sendLocationUpdate(lat, lng) {
+    if (!socket || !socket.connected) {
+      console.warn('Socket not connected, cannot send location');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    let driverId = localStorage.getItem('driverId');
+    
+    // If no driverId stored, try to extract from token
+    if (!driverId && token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          driverId = payload.id || payload.email;
+        }
+      } catch (err) {
+        console.error('Error extracting driver ID from token:', err);
+      }
+    }
+
+    if (!driverId) {
+      console.warn('No driver ID available');
+      return;
+    }
+
+    socket.emit('driver_connect', { 
+      driverId: driverId,
+      lat: lat,
+      lng: lng
+    });
+  }
+
+  function updateLocationStatus(text, isActive) {
+    document.getElementById('locationStatusText').textContent = text;
+    const indicator = document.getElementById('locationStatus');
+    if (isActive) {
+      indicator.classList.remove('status-offline');
+    } else {
+      indicator.classList.add('status-offline');
     }
   }
 
@@ -223,24 +356,49 @@
     socket = io();
     
     socket.on('connect', () => {
-      console.log('Connected');
-      socket.emit('driver_connect', { driverId: localStorage.getItem('driverId') });
+      console.log('✅ Socket connected');
+      updateLocationStatus('Location tracking active', true);
+      
+      // Register with server
+      const token = localStorage.getItem('token');
+      if (token) {
+        socket.emit('register', token);
+      }
+
+      // Send initial location
+      sendLocationUpdate(lastLocation.lat, lastLocation.lng);
     });
 
     socket.on('new_order', (order) => {
-      console.log('New order:', order);
+      console.log('New order received:', order);
       document.getElementById('notifBadge').style.display = 'inline-block';
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      updateLocationStatus('Connection lost', false);
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      updateLocationStatus('Connection error', false);
     });
   }
 
   async function loadStats() {
-    const token = localStorage.getItem('driverToken');
+    const token = localStorage.getItem('token');
     if (!token) return;
 
     try {
       const response = await fetch('/api/driver/stats', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (!response.ok) {
+        console.error('Failed to fetch stats:', response.status);
+        return;
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -262,6 +420,13 @@
       el.textContent = value;
     });
   }
+
+  // Clean up on page unload
+  window.addEventListener('beforeunload', () => {
+    if (geolocationWatchId) {
+      navigator.geolocation.clearWatch(geolocationWatchId);
+    }
+  });
 </script>
 
 </body>
