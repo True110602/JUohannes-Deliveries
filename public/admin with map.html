@@ -20,7 +20,8 @@
     .btn-secondary { background: #f0f0f0; color: #333; }
     .btn-secondary:hover { background: #e0e0e0; }
     .map-container { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 30px; }
-    #map { height: 400px; border-radius: 6px; }
+    #map { height: 500px; border-radius: 6px; background: #f0f0f0; }
+    .map-loading { color: #999; padding: 20px; text-align: center; }
   </style>
 </head>
 <body>
@@ -162,6 +163,11 @@
   <!-- Main Stats -->
   <div class="dashboard-grid">
     <div class="card">
+      <div class="card-title">🚗 Online Drivers</div>
+      <div class="card-value" data-stat="onlineDrivers">0</div>
+      <a href="#" class="btn btn-secondary">View All</a>
+    </div>
+    <div class="card">
       <div class="card-title">👥 Active Users</div>
       <div class="card-value" data-stat="activeUsers">0</div>
       <a href="#" class="btn btn-secondary">View All</a>
@@ -169,11 +175,6 @@
     <div class="card">
       <div class="card-title">🏪 Merchants</div>
       <div class="card-value" data-stat="totalMerchants">0</div>
-      <a href="#" class="btn btn-secondary">Manage</a>
-    </div>
-    <div class="card">
-      <div class="card-title">🚗 Drivers</div>
-      <div class="card-value" data-stat="totalDrivers">0</div>
       <a href="#" class="btn btn-secondary">Manage</a>
     </div>
     <div class="card">
@@ -186,23 +187,23 @@
   <!-- Revenue Stats -->
   <div class="dashboard-grid">
     <div class="card">
+      <div class="card-title">📈 Active Orders</div>
+      <div class="card-value" data-stat="activeOrders">0</div>
+      <a href="#" class="btn btn-secondary">Details</a>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ Completed Orders</div>
+      <div class="card-value" data-stat="completedOrders">0</div>
+      <a href="#" class="btn btn-secondary">Reports</a>
+    </div>
+    <div class="card">
       <div class="card-title">💰 Total Revenue</div>
       <div class="card-value" data-stat="totalRevenue">$0.00</div>
       <a href="#" class="btn btn-secondary">Revenue Report</a>
     </div>
     <div class="card">
-      <div class="card-title">📈 Avg Order Value</div>
-      <div class="card-value" data-stat="avgOrderValue">$0.00</div>
-      <a href="#" class="btn btn-secondary">Details</a>
-    </div>
-    <div class="card">
-      <div class="card-title">⭐ Avg Rating</div>
-      <div class="card-value" data-stat="avgRating">4.8</div>
-      <a href="#" class="btn btn-secondary">Reviews</a>
-    </div>
-    <div class="card">
       <div class="card-title">✅ Success Rate</div>
-      <div class="card-value" data-stat="successRate">98%</div>
+      <div class="card-value" data-stat="successRate">0%</div>
       <a href="#" class="btn btn-secondary">Details</a>
     </div>
   </div>
@@ -221,88 +222,169 @@
 </main>
 
 <script src="/js/menu.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script>
   // ADMIN DASHBOARD WITH REAL-TIME MAP
   
   let map;
   let driverMarkers = {};
+  let socket;
 
   document.addEventListener('DOMContentLoaded', () => {
     initMap();
     loadStats();
     loadDriverLocations();
+    connectSocket();
+    
+    // Update every 10 seconds
+    setInterval(loadDriverLocations, 10000);
     setInterval(loadStats, 30000);
-    setInterval(loadDriverLocations, 10000); // Update driver positions every 10s
   });
 
   function initMap() {
     try {
       // Default to Johannesburg, South Africa
-      const defaultCenter = [-26.2023, 28.0436];
+      const johannesburg = [-26.2023, 28.0436];
       
-      map = L.map('map').setView(defaultCenter, 12);
+      map = L.map('map').setView(johannesburg, 12);
       
+      // Use OpenStreetMap tiles
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
       }).addTo(map);
       
-      console.log('✅ Map initialized successfully');
+      console.log('✅ Map initialized at Johannesburg');
     } catch (err) {
       console.error('❌ Map initialization error:', err);
-      document.getElementById('map').innerHTML = '<p style="padding:20px;color:red;">Map failed to load</p>';
     }
   }
 
   async function loadDriverLocations() {
-    if (!map) return;
+    if (!map) {
+      console.warn('Map not ready');
+      return;
+    }
     
     try {
-      const response = await fetch('/api/admin/drivers-locations');
-      const data = await response.json();
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/admin/drivers-locations', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch driver locations:', response.status);
+        return;
+      }
 
-      if (data.success && data.drivers) {
+      const data = await response.json();
+      console.log('Driver locations response:', data);
+
+      if (data.success && data.drivers && Array.isArray(data.drivers)) {
+        // Clear old markers that are no longer in the data
+        const currentIds = new Set(data.drivers.map(d => d.driverId || d._id));
+        Object.keys(driverMarkers).forEach(id => {
+          if (!currentIds.has(id)) {
+            map.removeLayer(driverMarkers[id]);
+            delete driverMarkers[id];
+          }
+        });
+
+        // Update or create markers
         data.drivers.forEach(driver => {
-          const key = driver._id;
+          const driverId = driver.driverId || driver._id;
           
           if (driver.latitude && driver.longitude) {
-            if (driverMarkers[key]) {
+            if (driverMarkers[driverId]) {
               // Update existing marker position
-              driverMarkers[key].setLatLng([driver.latitude, driver.longitude]);
+              driverMarkers[driverId].setLatLng([driver.latitude, driver.longitude]);
             } else {
               // Create new marker
-              const marker = L.marker([driver.latitude, driver.longitude])
-                .bindPopup(`<b>🚗 ${driver.driverName}</b><br>Status: ${driver.status || 'Unknown'}<br>Phone: ${driver.phone || 'N/A'}`)
-                .addTo(map);
-              driverMarkers[key] = marker;
+              const driverName = driver.driverName || 'Driver';
+              const phone = driver.phone || 'N/A';
+              
+              const marker = L.circleMarker(
+                [driver.latitude, driver.longitude],
+                {
+                  radius: 10,
+                  fillColor: '#667eea',
+                  color: '#fff',
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.8
+                }
+              ).bindPopup(`
+                <div style="font-weight: bold; margin-bottom: 5px;">🚗 ${driverName}</div>
+                <div>Phone: ${phone}</div>
+                <div style="font-size: 12px; color: #666;">Updated: ${new Date(driver.updatedAt).toLocaleTimeString()}</div>
+              `).addTo(map);
+              
+              driverMarkers[driverId] = marker;
+              console.log(`Added marker for driver: ${driverName}`);
             }
           }
         });
+
+        console.log(`✅ Displayed ${data.drivers.length} drivers on map`);
+      } else {
+        console.warn('No driver data or invalid format:', data);
       }
     } catch (err) {
       console.error('Error loading driver locations:', err);
     }
   }
 
+  function connectSocket() {
+    socket = io();
+    
+    socket.on('connect', () => {
+      console.log('✅ Socket connected');
+      const token = localStorage.getItem('token');
+      if (token) {
+        socket.emit('register', token);
+      }
+    });
+
+    socket.on('update_fleet', (locations) => {
+      console.log('Fleet update received:', locations);
+      loadDriverLocations();
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
+  }
+
   async function loadStats() {
-    const token = localStorage.getItem('adminToken');
-    if (!token) return;
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.warn('No token, skipping stats load');
+      return;
+    }
 
     try {
       const response = await fetch('/api/admin/stats', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (!response.ok) {
+        console.error('Failed to fetch stats:', response.status);
+        return;
+      }
+
       const data = await response.json();
+      console.log('Stats response:', data);
 
       if (data.success) {
         updateAllStats('activeUsers', data.activeUsers || 0);
         updateAllStats('totalMerchants', data.totalMerchants || 0);
         updateAllStats('totalDrivers', data.totalDrivers || 0);
+        updateAllStats('onlineDrivers', data.onlineDrivers || 0);
         updateAllStats('totalOrders', data.totalOrders || 0);
-        updateAllStats('totalRevenue', '$' + (data.totalRevenue || 0).toFixed(2));
-        updateAllStats('avgOrderValue', '$' + (data.avgOrderValue || 0).toFixed(2));
-        updateAllStats('avgRating', (data.avgRating || 4.8).toFixed(1));
-        updateAllStats('successRate', (data.successRate || 98) + '%');
+        updateAllStats('activeOrders', data.activeOrders || 0);
+        updateAllStats('completedOrders', data.completedOrders || 0);
+        updateAllStats('totalRevenue', '$' + (data.totalRevenue || 0));
+        updateAllStats('successRate', (data.successRate || 0) + '%');
       }
     } catch (err) {
       console.error('Error loading stats:', err);
