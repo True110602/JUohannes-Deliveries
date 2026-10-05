@@ -4,154 +4,289 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Register - JUohannes Deliveries</title>
-  <link rel="stylesheet" href="/css/theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .register-container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 450px; padding: 40px; }
-    .register-header { text-align: center; margin-bottom: 30px; }
-    .register-logo { font-size: 48px; margin-bottom: 10px; }
-    .register-title { font-size: 28px; font-weight: 700; color: #333; margin-bottom: 5px; }
-    .register-subtitle { font-size: 14px; color: #999; }
-    .form-group { margin-bottom: 18px; }
-    .form-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
-    .form-input, .form-select { width: 100%; padding: 12px 15px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; transition: all 0.2s; }
-    .form-input:focus, .form-select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .form-button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-    .form-button:hover { background: #764ba2; }
-    .form-footer { text-align: center; margin-top: 20px; font-size: 13px; color: #666; }
-    .form-footer a { color: #667eea; text-decoration: none; font-weight: 600; }
-    .error-message { color: #e74c3c; font-size: 13px; margin-top: 5px; }
-    .success-message { color: #27ae60; font-size: 13px; margin-top: 5px; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 450px;
+      width: 100%;
+      padding: 40px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #999;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 20px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .error {
+      color: #f44336;
+      font-size: 14px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #ffebee;
+      border-radius: 4px;
+      display: none;
+    }
+    .success {
+      color: #4CAF50;
+      font-size: 14px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 4px;
+      display: none;
+    }
+    .login-link {
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+    .login-link a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .login-link a:hover {
+      text-decoration: underline;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 10px;
+    }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">📦</div>
+      <h1>Create Account</h1>
+      <p class="subtitle">Join JUohannes Deliveries</p>
+    </div>
 
-<div class="register-container">
-  
-  <div class="register-header">
-    <div class="register-logo">📦</div>
-    <h1 class="register-title">Join JUohannes</h1>
-    <p class="register-subtitle">Create your account</p>
+    <form id="registerForm">
+      <div class="form-group">
+        <label for="name">Full Name *</label>
+        <input type="text" id="name" placeholder="John Doe" required>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email Address *</label>
+        <input type="email" id="email" placeholder="john@example.com" required>
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Phone Number *</label>
+        <input type="tel" id="phone" placeholder="+263 7x xxx xxxx" required>
+      </div>
+
+      <div class="form-group">
+        <label for="address">Address *</label>
+        <input type="text" id="address" placeholder="123 Main Street" required>
+      </div>
+
+      <div class="form-group">
+        <label for="role">Account Type *</label>
+        <select id="role" required>
+          <option value="customer" selected>Customer</option>
+          <option value="driver">Driver</option>
+          <option value="merchant">Merchant</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password *</label>
+        <input type="password" id="password" placeholder="At least 6 characters" required minlength="6">
+      </div>
+
+      <div class="form-group">
+        <label for="referralCode">Referral Code (Optional)</label>
+        <input type="text" id="referralCode" placeholder="Enter referral code if you have one">
+      </div>
+
+      <div id="errorMsg" class="error"></div>
+      <div id="successMsg" class="success"></div>
+
+      <button type="submit" class="btn" id="submitBtn">Create Account</button>
+
+      <div class="loading" id="loading">
+        <span class="spinner"></span> Creating account...
+      </div>
+    </form>
+
+    <div class="login-link">
+      Already have an account? <a href="login.html">Login here</a>
+    </div>
   </div>
 
-  <form id="registerForm">
+  <script>
+    // Get the API base URL - works for both localhost and Render deployment
+    const API_BASE_URL = window.location.origin;
     
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">First Name</label>
-        <input type="text" id="firstName" class="form-input" placeholder="John" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Last Name</label>
-        <input type="text" id="lastName" class="form-input" placeholder="Doe" required>
-      </div>
-    </div>
+    console.log('API Base URL:', API_BASE_URL);
+    console.log('Using endpoint:', API_BASE_URL + '/api/register');
 
-    <div class="form-group">
-      <label class="form-label">Email Address</label>
-      <input type="email" id="email" class="form-input" placeholder="you@example.com" required>
-    </div>
+    const form = document.getElementById('registerForm');
+    const errorMsg = document.getElementById('errorMsg');
+    const successMsg = document.getElementById('successMsg');
+    const loading = document.getElementById('loading');
+    const submitBtn = document.getElementById('submitBtn');
 
-    <div class="form-group">
-      <label class="form-label">Phone Number</label>
-      <input type="tel" id="phone" class="form-input" placeholder="+263 712 345 678" required>
-    </div>
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Hide previous messages
+      errorMsg.style.display = 'none';
+      successMsg.style.display = 'none';
+      loading.style.display = 'block';
+      submitBtn.disabled = true;
 
-    <div class="form-group">
-      <label class="form-label">I am a...</label>
-      <select id="role" class="form-select" required>
-        <option value="">-- Select your role --</option>
-        <option value="customer">Customer (Food Delivery)</option>
-        <option value="merchant">Merchant (Restaurant)</option>
-        <option value="driver">Driver (Delivery Partner)</option>
-      </select>
-    </div>
+      try {
+        const payload = {
+          name: document.getElementById('name').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          phone: document.getElementById('phone').value.trim(),
+          address: document.getElementById('address').value.trim(),
+          role: document.getElementById('role').value,
+          password: document.getElementById('password').value,
+          referralCode: document.getElementById('referralCode').value.trim() || undefined
+        };
 
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input type="password" id="password" class="form-input" placeholder="••••••••" required>
-      <small style="color: #999; display: block; margin-top: 5px;">Min 6 characters</small>
-    </div>
+        console.log('Sending registration request:', payload);
 
-    <div class="form-group">
-      <label class="form-label">Confirm Password</label>
-      <input type="password" id="confirmPassword" class="form-input" placeholder="••••••••" required>
-    </div>
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
 
-    <button type="submit" class="form-button">Create Account</button>
+        console.log('Response status:', response.status);
+        const data = await response.json();
+        console.log('Response data:', data);
 
-    <div id="registerError" class="error-message" style="text-align: center; margin-top: 15px;"></div>
-    <div id="registerSuccess" class="success-message" style="text-align: center; margin-top: 15px;"></div>
+        if (data.success) {
+          // Store token
+          localStorage.setItem('token', data.token);
+          
+          // Show success message
+          successMsg.textContent = '✅ Account created successfully! Redirecting...';
+          successMsg.style.display = 'block';
 
-  </form>
-
-  <div class="form-footer">
-    <p>Already have an account? <a href="login.html">Sign in</a></p>
-  </div>
-
-</div>
-
-<script src="/js/config.js"></script>
-<script>
-  document.getElementById('registerForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const firstName = document.getElementById('firstName').value;
-    const lastName = document.getElementById('lastName').value;
-    const email = document.getElementById('email').value;
-    const phone = document.getElementById('phone').value;
-    const role = document.getElementById('role').value;
-    const password = document.getElementById('password').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    const errorDiv = document.getElementById('registerError');
-    const successDiv = document.getElementById('registerSuccess');
-
-    errorDiv.textContent = '';
-    successDiv.textContent = '';
-
-    // Validate
-    if (password !== confirmPassword) {
-      errorDiv.textContent = 'Passwords do not match';
-      return;
-    }
-
-    if (password.length < 6) {
-      errorDiv.textContent = 'Password must be at least 6 characters';
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
-          phone,
-          role,
-          password
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        successDiv.textContent = 'Account created! Redirecting to login...';
-        setTimeout(() => {
-          window.location.href = 'login.html';
-        }, 2000);
-      } else {
-        errorDiv.textContent = data.message || 'Registration failed. Please try again.';
+          // Redirect after 2 seconds
+          setTimeout(() => {
+            window.location.href = data.redirectUrl || '/customer.html';
+          }, 2000);
+        } else {
+          errorMsg.textContent = '❌ ' + (data.message || 'Registration failed');
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error('Registration error:', err);
+        errorMsg.textContent = '❌ Connection error: ' + err.message + '. Make sure the server is running at ' + API_BASE_URL;
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+      } finally {
+        loading.style.display = 'none';
       }
-    } catch (err) {
-      errorDiv.textContent = 'Connection error. Please try again.';
-      console.error('Register error:', err);
-    }
-  });
-</script>
+    });
 
+    // Log page load for debugging
+    console.log('Register page loaded');
+    console.log('Current URL:', window.location.href);
+  </script>
 </body>
 </html>
