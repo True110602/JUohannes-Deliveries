@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <style>
+    /* Page-specific styles */
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .card-title {
+      font-size: 14px;
+      color: #666;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .card-action {
+      margin-top: 15px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: #764ba2;
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #d1d5db;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="navbar-left">
+    <button class="hamburger" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <a href="/" class="navbar-logo">
+      📦 JUohannes
+    </a>
+  </div>
+
+  <div class="navbar-center">
+    <h1 id="pageTitle">Dashboard</h1>
+  </div>
+
+  <div class="navbar-right">
+    <div class="notification-icon" onclick="openNotifications()">
+      🔔
+      <span class="notification-badge" data-stat="notifications">3</span>
+    </div>
+    <div class="profile-icon" onclick="openProfile()">
+      👤
+    </div>
+  </div>
+</nav>
+
+<!-- SIDEBAR -->
+<aside class="sidebar hidden">
+  <!-- User Header -->
+  <div class="sidebar-header">
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar">JD</div>
+      <div class="sidebar-user-info">
+        <h3>John Doe</h3>
+        <p>customer@example.com</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistics -->
+  <div class="sidebar-stats">
+    <div class="stat-item">
+      <div class="stat-label">Active Orders</div>
+      <div class="stat-value" data-stat="activeOrders">2</div>
+      <div class="stat-change">from last week</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Total Spent</div>
+      <div class="stat-value" data-stat="totalSpent">$45.50</div>
+      <div class="stat-change up">↑ 12%</div>
+    </div>
+  </div>
+
+  <!-- Navigation Menu -->
+  <ul class="sidebar-menu">
+    <!-- CUSTOMER MENU -->
+    <li class="menu-section-title">Main</li>
+    <li class="menu-item">
+      <a href="customer.html" class="menu-link">
+        <span class="menu-icon">🏠</span>
+        Home
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#orders" class="menu-link" data-submenu="orders-submenu">
+        <span class="menu-icon">📦</span>
+        Orders
+        <span class="menu-badge">2</span>
+      </a>
+      <ul class="submenu" id="orders-submenu">
+        <li><a href="#" class="submenu-link">🟢 Active</a></li>
+        <li><a href="#" class="submenu-link">📋 History</a></li>
+        <li><a href="#" class="submenu-link">⭐ Tracking</a></li>
+      </ul>
+    </li>
+    <li class="menu-item">
+      <a href="#browse" class="menu-link">
+        <span class="menu-icon">🍽️</span>
+        Restaurants
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#favorites" class="menu-link">
+        <span class="menu-icon">❤️</span>
+        Favorites
+      </a>
+    </li>
+
+    <li class="menu-section-title">Account</li>
+    <li class="menu-item">
+      <a href="#wallet" class="menu-link">
+        <span class="menu-icon">💳</span>
+        Wallet
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="account.html" class="menu-link">
+        <span class="menu-icon">⚙️</span>
+        Settings
+      </a>
+    </li>
+  </ul>
+
+  <!-- Footer Links -->
+  <div class="sidebar-footer">
+    <a href="#" class="sidebar-footer-link">
+      <span>ℹ️</span> Help
+    </a>
+    <a href="/login.html" class="sidebar-footer-link logout">
+      <span>🚪</span> Logout
+    </a>
+  </div>
+</aside>
+
+<!-- OVERLAY (for mobile) -->
+<div class="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  <h1 class="page-title">Welcome back, John! 👋</h1>
+
+  <!-- DASHBOARD CARDS -->
+  <div class="dashboard-grid">
+    <!-- Card 1: Active Orders -->
+    <div class="card">
+      <div class="card-title">📦 Active Orders</div>
+      <div class="card-value" data-stat="activeOrders">2</div>
+      <div class="card-action">
+        <a href="#" class="btn btn-secondary">View Orders</a>
+      </div>
+    </div>
+
+    <!-- Card 2: Total Spent -->
+    <div class="card">
+      <div class="card-title">💰 Total Spent</div>
+      <div class="card-value" data-stat="totalSpent">$456.78</div>
+      <div class="card-action">
+        <a href="#" class="btn btn-secondary">View History</a>
+      </div>
+    </div>
+
+    <!-- Card 3: Favorites -->
+    <div class="card">
+      <div class="card-title">❤️ Favorite Restaurants</div>
+      <div class="card-value" data-stat="favorites">5</div>
+      <div class="card-action">
+        <a href="#" class="btn btn-secondary">Browse All</a>
+      </div>
+    </div>
+
+    <!-- Card 4: Wallet Balance -->
+    <div class="card">
+      <div class="card-title">💳 Wallet Balance</div>
+      <div class="card-value" data-stat="walletBalance">$25.00</div>
+      <div class="card-action">
+        <a href="#" class="btn">Add Funds</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Orders Section -->
+  <div class="card">
+    <h2 class="card-title">📋 Recent Orders</h2>
+    <div id="recentOrders">
+      <p>Loading orders...</p>
+    </div>
+  </div>
+</main>
+
+<script src="/js/menu.js"></script>
+<script>
+  // CUSTOMER PAGE SCRIPT
+  
+  // Initialize page
+  document.addEventListener('DOMContentLoaded', () => {
+    // Set page title in navbar
+    document.getElementById('pageTitle').textContent = 'Dashboard';
+    
+    // Set user info (from localStorage after login)
+    const userEmail = localStorage.getItem('customerEmail') || 'customer@example.com';
+    const userName = userEmail.split('@')[0];
+    const initials = userName.substring(0, 2).toUpperCase();
+    
+    // Update sidebar user info
+    document.querySelector('.sidebar-user-info h3').textContent = userName;
+    document.querySelector('.sidebar-user-info p').textContent = userEmail;
+    document.querySelector('.sidebar-user-avatar').textContent = initials;
+    
+    // Load stats
+    loadCustomerStats();
+  });
+
+  function loadCustomerStats() {
+    const token = localStorage.getItem('customerToken');
+    
+    fetch('/api/customer/orders', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          // Update sidebar stats
+          const activeOrders = data.orders?.filter(o => o.status === 'active').length || 0;
+          const totalSpent = data.orders?.reduce((sum, o) => sum + o.total, 0) || 0;
+          
+          document.querySelectorAll('[data-stat="activeOrders"]').forEach(el => {
+            el.textContent = activeOrders;
+          });
+          document.querySelectorAll('[data-stat="totalSpent"]').forEach(el => {
+            el.textContent = '$' + totalSpent.toFixed(2);
+          });
+          
+          // Render recent orders
+          renderRecentOrders(data.orders);
+        }
+      })
+      .catch(err => console.error('Failed to load stats:', err));
+  }
+
+  function renderRecentOrders(orders) {
+    const container = document.getElementById('recentOrders');
+    
+    if (!orders || orders.length === 0) {
+      container.innerHTML = '<p>No orders yet. <a href="#">Browse restaurants</a></p>';
+      return;
+    }
+    
+    container.innerHTML = orders.slice(0, 5).map(order => `
+      <div class="card" style="margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong>${order.restaurantName || 'Restaurant'}</strong>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">
+              ${new Date(order.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 18px; font-weight: 700; color: #667eea;">$${order.total}</div>
+            <div style="font-size: 12px; color: #999; margin-top: 3px;">
+              Status: <strong>${order.status}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openNotifications() {
+    alert('Notifications\n\n1. Order #123 delivered\n2. New restaurant: Pizza Hub\n3. 20% off your next order');
+  }
+
+  function openProfile() {
+    window.location.href = 'account.html';
+  }
+
+  function closeSidebar() {
+    document.querySelector('.sidebar').classList.add('hidden');
+    document.querySelector('.hamburger')?.classList.remove('active');
+    document.querySelector('.sidebar-overlay')?.classList.remove('active');
+  }
+</script>
+
+</body>
+</html>

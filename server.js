@@ -24,7 +24,9 @@ const adminRoutes = require('./routes/admin');
 const accountRoutes = require('./routes/account');
 const supportRoutes = require('./routes/support');
 const notificationRoutes = require('./routes/notifications');
+const spreadsheetRoutes = require('./routes/spreadsheet');
 const { notifyUser, notifyRole } = require('./utils/notify');
+const { broadcastOrders } = require('./utils/realtime');
 
 const app = express();
 const server = http.createServer(app);
@@ -125,8 +127,14 @@ async function seedDemoUsers() {
     }
   }
 }
+// Demo accounts all share the password "1234", so they must never exist
+// on a real deployment. Seeding is opt-in (SEED_DEMO_USERS=true) and is
+// refused outright when NODE_ENV=production.
 mongoose.connection.once('open', () => {
-  seedDemoUsers().catch(err => console.error('Error seeding demo users:', err));
+  if (process.env.SEED_DEMO_USERS === 'true' && process.env.NODE_ENV !== 'production') {
+    console.warn('SEED_DEMO_USERS=true - creating demo accounts with a weak password. Development only.');
+    seedDemoUsers().catch(err => console.error('Error seeding demo users:', err));
+  }
 });
 
 // --- NODEMAILER (password reset emails) ---
@@ -171,6 +179,8 @@ if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
   console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 app.set('paynow', paynow);
+app.set('transporter', transporter);
+app.set('emailConfigured', EMAIL_CONFIGURED);
 
 // Generates a short, human-shareable referral code (e.g. "BHEKI4821") and
 // retries on the rare collision - codes are unique on the User model, so
@@ -379,30 +389,6 @@ app.get('/api/check-session', authenticateToken, async (req, res) => {
   }
 });
 
-// Manually re-seed/reset the demo accounts if their passwords ever get
-// out of sync (e.g. after a schema change) - upserts, safe to call anytime.
-app.post('/api/seed-demo-users', async (req, res) => {
-  try {
-    const demoUsers = [
-      { email: 'customer', password: '1234', role: 'customer' },
-      { email: 'driver', password: '1234', role: 'driver' },
-      { email: 'merchant', password: '1234', role: 'merchant' },
-      { email: 'admin', password: '1234', role: 'admin' }
-    ];
-    for (const u of demoUsers) {
-      const hashedPassword = await bcrypt.hash(u.password, 10);
-      await User.findOneAndUpdate(
-        { email: u.email },
-        { email: u.email, password: hashedPassword, role: u.role },
-        { upsert: true, new: true }
-      );
-    }
-    res.json({ success: true, message: 'Demo logins restored successfully! Login with password "1234".' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
 app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
@@ -495,6 +481,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/spreadsheet', spreadsheetRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
@@ -508,8 +495,7 @@ app.post('/api/payments/paynow-result', async (req, res) => {
       if (order) {
         order.paymentStatus = (status || '').toLowerCase() || order.paymentStatus;
         await order.save();
-        const allOrders = await Order.find().sort({ createdAt: -1 });
-        io.emit('update_orders', allOrders);
+        await broadcastOrders(io, order);
       }
     }
     res.sendStatus(200);
@@ -524,66 +510,74 @@ app.post('/api/payments/paynow-result', async (req, res) => {
 // so the admin map still shows recent positions right after a restart,
 // before any driver reconnects.
 // ==========================================
-io.on('connection', async (socket) => {
-  console.log('A user connected:', socket.id);
+// Every socket must present a valid JWT in the handshake
+// (io(url, { auth: { token } })). Unauthenticated sockets are rejected, so
+// nobody can listen to data or inject driver positions anonymously.
+io.use((socket, next) => {
+  const token = socket.handshake.auth && socket.handshake.auth.token;
+  if (!token) return next(new Error('Authentication required'));
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err || !decoded || !decoded.email) return next(new Error('Invalid or expired token'));
+    socket.user = decoded;
+    next();
+  });
+});
 
-  try {
-    const savedLocations = await DriverLocation.find();
-    socket.emit('update_fleet', savedLocations.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
-  } catch (err) {
-    console.error('Error loading saved driver locations:', err);
+function fleetPayload(drivers) {
+  return drivers.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng }));
+}
+
+io.on('connection', async (socket) => {
+  const { email, role } = socket.user;
+
+  // Personal room (notifications, own-order updates). The email comes from
+  // the verified token, never from anything the client sends.
+  socket.join(email);
+  if (role === 'admin') socket.join('admins');
+
+  // Only admins see the whole fleet.
+  if (role === 'admin') {
+    try {
+      const savedLocations = await DriverLocation.find();
+      socket.emit('update_fleet', fleetPayload(savedLocations));
+    } catch (err) {
+      console.error('Error loading saved driver locations:', err);
+    }
   }
 
-  // Notifications are targeted per-person (see utils/notify.js), which
-  // means each socket needs to be in a "room" the server can address by
-  // that person's email. A client can't just claim to be any email they
-  // like here - the token is verified the same way authenticateToken
-  // verifies it on regular HTTP requests, so joining someone else's room
-  // requires an actual valid token for that account.
-  socket.on('register', (token) => {
-    if (!token) return;
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-      if (!err && decoded && decoded.email) {
-        socket.join(decoded.email);
-      }
-    });
-  });
-
   socket.on('driver_connect', async (data) => {
+    if (role !== 'driver') return;
     try {
+      const lat = Number(data && data.lat);
+      const lng = Number(data && data.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+          lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+
+      // Identity is the verified token's email - the same value orders store
+      // in assignedDriver - not a client-supplied driverId.
       await DriverLocation.findOneAndUpdate(
-        { driverId: data.driverId },
-        { lat: data.lat, lng: data.lng },
+        { driverId: email },
+        { lat, lng },
         { upsert: true }
       );
       const allDrivers = await DriverLocation.find();
-      io.emit('update_fleet', allDrivers.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng })));
+      io.to('admins').emit('update_fleet', fleetPayload(allDrivers));
 
-      // Push this driver's position to the customer(s) whose order they're
-      // currently delivering, so the customer can watch it move on their
-      // own map. Only in-progress orders - a delivered/cancelled order
-      // shouldn't keep tracking anyone.
+      // Push this driver's position only to the customer(s) whose order
+      // they're currently delivering.
       const activeOrders = await Order.find({
-        assignedDriver: data.driverId,
+        assignedDriver: email,
         status: { $in: ['assigned', 'picked_up'] }
       }).select('customerEmail');
 
       activeOrders.forEach(order => {
         if (order.customerEmail) {
-          io.to(order.customerEmail).emit('driver_position', {
-            orderId: order._id,
-            lat: data.lat,
-            lng: data.lng
-          });
+          io.to(order.customerEmail).emit('driver_position', { orderId: order._id, lat, lng });
         }
       });
     } catch (err) {
       console.error('Error saving driver location:', err);
     }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
   });
 });
 

@@ -4,6 +4,90 @@ const Order = require('../models/Order');
 const User = require('../models/user');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { notifyUser, notifyRole } = require('../utils/notify');
+const upload = require('../middleware/upload');
+const CatalogItem = require('../models/CatalogItem');
+const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { broadcastOrders } = require('../utils/realtime');
+
+// Reject malformed ids up front so Mongoose CastErrors never reach the
+// client as a 500 with a raw error message.
+router.param('id', (req, res, next, id) => {
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order id.' });
+  }
+  next();
+});
+
+// Builds the order's line items and subtotal from the catalog, never from
+// client-supplied prices. The client only says WHICH item, how many, and
+// which options; name, price and merchant all come from the database.
+async function priceLineItems(rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 50) {
+    return { error: 'Your order must contain between 1 and 50 items.' };
+  }
+  const ids = [];
+  for (const li of rawItems) {
+    if (!li || !mongoose.isValidObjectId(li.catalogItemId)) {
+      return { error: 'Each item must reference a valid catalog item.' };
+    }
+    ids.push(String(li.catalogItemId));
+  }
+  const catalog = await CatalogItem.find({ _id: { $in: ids } });
+  const byId = new Map(catalog.map(c => [String(c._id), c]));
+
+  const lineItems = [];
+  let subtotal = 0;
+  for (const li of rawItems) {
+    const cat = byId.get(String(li.catalogItemId));
+    if (!cat) return { error: 'One of the items in your order no longer exists.' };
+    if (cat.inStock === false) return { error: `"${cat.name}" is out of stock.` };
+
+    const quantity = Number(li.quantity === undefined ? 1 : li.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+      return { error: `Invalid quantity for "${cat.name}".` };
+    }
+
+    // Only accept option choices the merchant actually offers.
+    const selectedOptions = {};
+    const sent = li.selectedOptions && typeof li.selectedOptions === 'object' ? li.selectedOptions : {};
+    for (const [group, choice] of Object.entries(sent)) {
+      const def = (cat.optionGroups || []).find(g => g.groupName === group);
+      if (!def || typeof choice !== 'string' || !def.choices.includes(choice)) {
+        return { error: `Invalid option selected for "${cat.name}".` };
+      }
+      selectedOptions[group] = choice;
+    }
+
+    subtotal += cat.price * quantity;
+    lineItems.push({
+      catalogItemId: cat._id,
+      merchantEmail: cat.merchantEmail,
+      name: cat.name,
+      price: cat.price,
+      quantity,
+      selectedOptions
+    });
+  }
+  return { lineItems, subtotal: Math.round(subtotal * 100) / 100 };
+}
+
+// Which status changes are legal, and who may make them.
+const STATUS_TRANSITIONS = {
+  pending: ['cancelled'],
+  assigned: ['pending', 'picked_up', 'failed', 'cancelled'],
+  picked_up: ['delivered', 'failed', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+  failed: []
+};
+const DRIVER_ALLOWED_TARGETS = ['picked_up', 'delivered', 'failed'];
+
+function discardUpload(file) {
+  if (!file || !file.path) return;
+  fs.unlink(file.path, () => {});
+}
 
 // Drivers are paid per kilometre travelled (shop -> drop-off) rather
 // than a percentage of the order. A 10% cut used to mean a long trip for
@@ -102,7 +186,7 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const {
       pickup, dropoff, item, paymentMethod, ecocashNumber, mobileNumber,
-      amount, tip, lineItems, useCredit
+      tip, lineItems: rawLineItems, useCredit
     } = req.body;
 
     if (!pickup || !dropoff) {
@@ -123,8 +207,16 @@ router.post('/', authenticateToken, async (req, res) => {
     // amount = item subtotal only, before any discount/credit. tip is kept
     // separate so the platform's commission is always based on the
     // subtotal, never on the driver's tip.
-    const subtotalBeforeDiscount = parseFloat(amount) || 0;
-    const tipAmount = Math.max(0, parseFloat(tip) || 0);
+    // The subtotal is recomputed from the catalog; any `amount` the client
+    // sends is ignored, so a customer can't order for $0.
+    const priced = await priceLineItems(rawLineItems);
+    if (priced.error) {
+      return res.status(400).json({ success: false, message: priced.error });
+    }
+    const lineItems = priced.lineItems;
+    const subtotalBeforeDiscount = priced.subtotal;
+    const parsedTip = Number(tip);
+    const tipAmount = Number.isFinite(parsedTip) ? Math.min(1000, Math.max(0, Math.round(parsedTip * 100) / 100)) : 0;
 
     // --- Referral discount + credit redemption ---
     // Every order now belongs to a logged-in account (see authenticateToken
@@ -160,9 +252,7 @@ router.post('/', authenticateToken, async (req, res) => {
     // merchant of the first line item is treated as the pickup point;
     // multi-shop orders are rare here and would need a multi-leg route
     // to price properly, so this deliberately keeps it simple.
-    const pickupMerchantEmail = Array.isArray(lineItems) && lineItems.length
-      ? lineItems.find(li => li.merchantEmail)?.merchantEmail
-      : null;
+    const pickupMerchantEmail = lineItems.find(li => li.merchantEmail)?.merchantEmail || null;
     const pickupShop = pickupMerchantEmail
       ? await User.findOne({ email: pickupMerchantEmail }).select('shopLat shopLng isOpen')
       : null;
@@ -187,7 +277,7 @@ router.post('/', authenticateToken, async (req, res) => {
       pickup,
       dropoff,
       item: item || '',
-      lineItems: Array.isArray(lineItems) ? lineItems : [],
+      lineItems,
       amount: orderAmount,
       tip: tipAmount,
       discountApplied,
@@ -251,8 +341,7 @@ router.post('/', authenticateToken, async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
 
     // Notify admins (someone needs to assign a driver) and every merchant
     // whose items are actually in this order - a merchant with nothing in
@@ -350,15 +439,26 @@ router.patch('/:id/assign', ...requireRole('admin'), async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
+    if (typeof driverEmail !== 'string') {
+      return res.status(400).json({ success: false, message: 'driverEmail must be a string' });
+    }
+    if (!['pending', 'assigned'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: `An order that is ${order.status} cannot be (re)assigned.` });
+    }
+    const driver = await User.findOne({ email: driverEmail, role: 'driver' }).select('email');
+    if (!driver) {
+      return res.status(400).json({ success: false, message: 'No driver account with that email.' });
+    }
+
     order.assignedDriver = driverEmail;
     order.status = 'assigned';
     order.driverAccepted = null; // fresh assignment always needs a fresh response
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
 
+    io.to(driverEmail).emit('new_order', order);
     notifyUser(io, driverEmail, {
       title: 'New delivery assigned to you',
       message: `You've been assigned an order for ${order.customerName}. Please accept or decline it.`,
@@ -403,8 +503,7 @@ router.patch('/:id/respond', ...requireRole('driver'), async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
 
     if (accepted) {
       notifyUser(io, order.customerEmail, {
@@ -444,8 +543,7 @@ router.patch('/:id/cancel', authenticateToken, async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
 
     notifyRole(io, User, 'admin', {
       title: 'Customer cancelled an order',
@@ -459,18 +557,76 @@ router.patch('/:id/cancel', authenticateToken, async (req, res) => {
   }
 });
 
-router.patch('/:id/status', ...requireRole('admin', 'driver'), async (req, res) => {
+router.patch('/:id/status', ...requireRole('admin', 'driver'), (req, res, next) => {
+  // multer only kicks in for an actual multipart/form-data request (a
+  // driver attaching a photo); a plain JSON status change from admin
+  // passes straight through untouched.
+  upload.single('photo')(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message || 'Photo upload failed.' });
+    next();
+  });
+}, async (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'];
-    if (!validStatuses.includes(status)) {
+    if (typeof status !== 'string' || !validStatuses.includes(status)) {
+      discardUpload(req.file);
       return res.status(400).json({ success: false, message: `status must be one of: ${validStatuses.join(', ')}` });
     }
 
     const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (!order) {
+      discardUpload(req.file);
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Drivers may only touch orders assigned to them, and only move them
+    // forward (picked_up / delivered / failed). Admins can also cancel or
+    // unassign. Neither role can skip steps or reopen a finished order.
+    if (req.user.role === 'driver') {
+      if (order.assignedDriver !== req.user.email) {
+        discardUpload(req.file);
+        return res.status(403).json({ success: false, message: 'This order is not assigned to you.' });
+      }
+      if (order.driverAccepted === false) {
+        discardUpload(req.file);
+        return res.status(403).json({ success: false, message: 'You declined this order.' });
+      }
+      if (!DRIVER_ALLOWED_TARGETS.includes(status)) {
+        discardUpload(req.file);
+        return res.status(403).json({ success: false, message: 'Drivers can only mark an order picked up, delivered or failed.' });
+      }
+    }
+    if (status === 'assigned') {
+      discardUpload(req.file);
+      return res.status(400).json({ success: false, message: 'Use the assign endpoint to assign a driver.' });
+    }
+    if (!(STATUS_TRANSITIONS[order.status] || []).includes(status)) {
+      discardUpload(req.file);
+      return res.status(400).json({ success: false, message: `An order that is ${order.status} cannot be changed to ${status}.` });
+    }
 
     order.status = status;
+    if (status === 'pending') {
+      // Admin unassigned the order.
+      order.assignedDriver = null;
+      order.driverAccepted = null;
+    }
+
+    // Photo proof of handoff - only meaningful (and only accepted) at the
+    // two points a driver physically has the order in hand.
+    let photoCaptured = false;
+    if (req.file && (status === 'picked_up' || status === 'delivered')) {
+      const photoUrl = `/uploads/${req.file.filename}`;
+      if (status === 'picked_up') {
+        order.pickupPhotoUrl = photoUrl;
+        order.pickupPhotoAt = new Date();
+      } else {
+        order.deliveryPhotoUrl = photoUrl;
+        order.deliveryPhotoAt = new Date();
+      }
+      photoCaptured = true;
+    }
 
     // Referral reward: fires once, the first time one of a referred
     // customer's orders actually reaches "delivered" - not on placement,
@@ -495,18 +651,25 @@ router.patch('/:id/status', ...requireRole('admin', 'driver'), async (req, res) 
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
 
     const STATUS_LABELS = {
       pending: 'pending', assigned: 'assigned to a driver', picked_up: 'picked up',
       delivered: 'delivered', cancelled: 'cancelled', failed: 'marked as failed'
     };
+    const photoNote = photoCaptured ? ' A photo was taken as proof.' : '';
     notifyUser(io, order.customerEmail, {
       title: 'Order status updated',
-      message: `Your order is now ${STATUS_LABELS[status] || status}.`,
+      message: `Your order is now ${STATUS_LABELS[status] || status}.${photoNote}`,
       relatedOrderId: order._id
     });
+    if (status === 'picked_up' || status === 'delivered') {
+      notifyRole(io, User, 'admin', {
+        title: `Order ${STATUS_LABELS[status]}`,
+        message: `Order #${order._id.toString().slice(-6)} (${order.customerName}) was just ${STATUS_LABELS[status]} by ${order.assignedDriver || 'a driver'}.${photoNote}`,
+        relatedOrderId: order._id
+      });
+    }
     if (referrerToNotify) {
       notifyUser(io, referrerToNotify, {
         title: 'You earned referral credit!',
@@ -524,6 +687,9 @@ router.get('/:id/payment-status', authenticateToken, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (req.user.role !== 'admin' && order.customerEmail !== req.user.email) {
+      return res.status(403).json({ success: false, message: 'You can only check your own orders.' });
+    }
 
     const paynow = req.app.get('paynow');
     if (!order.paynowPollUrl || !paynow) {
@@ -535,8 +701,7 @@ router.get('/:id/payment-status', authenticateToken, async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    const allOrders = await Order.find().sort({ createdAt: -1 });
-    io.emit('update_orders', allOrders);
+    await broadcastOrders(io, order);
     res.json({ success: true, paymentStatus: order.paymentStatus });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Could not check payment status' });

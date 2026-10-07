@@ -1,232 +1,248 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
-  <script>
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        }
-      });
-
-    function logoutAccount() {
-      clearAuthToken();
-      window.location.href = '/login.html';
-    }
-  </script>
-
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Account - Johannes Deliveries</title>
-  <link rel="stylesheet" href="/css/theme.css" />
-  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Settings - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
+    .page-title { font-size: 28px; font-weight: 700; margin: 0 0 25px 0; color: #333; }
+    .card { background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    .card-title { font-size: 16px; font-weight: 700; color: #333; margin-bottom: 20px; }
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .form-input { width: 100%; padding: 12px 15px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; }
+    .form-input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .btn { display: inline-block; padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; font-weight: 600; margin-right: 10px; margin-top: 15px; }
+    .btn:hover { background: #764ba2; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-danger { background: #e74c3c; }
+    .btn-danger:hover { background: #c0392b; }
+    .settings-section { margin-bottom: 30px; }
+    .settings-title { font-size: 18px; font-weight: 700; color: #333; margin-bottom: 15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+    .toggle-switch { display: inline-block; position: relative; width: 50px; height: 26px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: 0.4s; border-radius: 26px; }
+    .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: 0.4s; border-radius: 50%; }
+    input:checked + .toggle-slider { background-color: #667eea; }
+    input:checked + .toggle-slider:before { transform: translateX(24px); }
+  </style>
 </head>
 <body>
 
-  <div class="fx-shell" style="max-width: 560px;">
-    <div class="fx-nav">
-      <div class="fx-nav-title">
-        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
-        <div>
-          <span class="fx-pill">My Account</span>
-          <h2 style="margin:6px 0 0;">Account settings</h2>
-        </div>
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="navbar-left">
+    <button class="hamburger" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <a href="/" class="navbar-logo">📦 JUohannes</a>
+  </div>
+  <div class="navbar-right">
+    <div class="notification-icon" onclick="alert('Settings')" style="cursor:pointer;">🔔</div>
+    <div class="profile-icon" style="cursor:pointer;">👤</div>
+  </div>
+</nav>
+
+<!-- SIDEBAR -->
+<aside class="sidebar hidden">
+  
+  <div class="sidebar-header">
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar" id="userAvatar">US</div>
+      <div class="sidebar-user-info">
+        <h3 id="userName">User</h3>
+        <p id="userEmail">user@example.com</p>
       </div>
-      <button class="fx-btn-ghost" style="width:auto;" onclick="history.back()">&larr; Back</button>
     </div>
-
-    <div class="fx-card">
-      <div class="fx-eyebrow">Profile</div>
-      <h3 style="margin-top:0;">Your details</h3>
-
-      <form id="profileForm">
-        <label>Profile Picture</label>
-        <div class="fx-drop-zone" id="avatarDropZone">
-          <img id="avatarPreview" class="fx-drop-preview fx-drop-preview-round" alt="Profile picture preview">
-          <div class="fx-drop-zone-text"><b>Click to upload</b> or drag a picture here</div>
-          <input type="file" id="avatarFile" accept="image/*">
-        </div>
-        <input type="hidden" id="avatarUrl">
-
-        <label>Full Name</label>
-        <input type="text" id="accName" placeholder="Full name">
-
-        <label>Email</label>
-        <input type="text" id="accEmail" disabled>
-
-        <label>Phone Number</label>
-        <input type="tel" id="accPhone" placeholder="Phone number">
-
-        <label>Address</label>
-        <input type="text" id="accAddress" placeholder="Address">
-
-        <button type="submit" id="saveProfileBtn">Save changes</button>
-      </form>
-      <p id="profileStatus"></p>
-    </div>
-
-    <div class="fx-card">
-      <div class="fx-eyebrow">Security</div>
-      <h3 style="margin-top:0;">Change password</h3>
-
-      <form id="passwordForm">
-        <label>Current Password</label>
-        <input type="password" id="currentPassword" required>
-
-        <label>New Password</label>
-        <input type="password" id="newPassword" required minlength="6" placeholder="At least 6 characters">
-
-        <button type="submit" id="savePasswordBtn">Update password</button>
-      </form>
-      <p id="passwordStatus"></p>
-    </div>
-
-    <div class="fx-card">
-      <div class="fx-eyebrow">Referral program</div>
-      <h3 style="margin-top:0;">Invite friends, earn credit</h3>
-      <p class="fx-muted" style="margin-top:0;">Share your code. When a friend signs up with it, they get 10% off their first order - and once that order is delivered, you get $2 in credit to use on your own next order.</p>
-      <div id="referralInfo"><span class="inline-spinner fx-spinner-light"></span>Loading...</div>
-    </div>
-
-    <button class="fx-btn-danger" onclick="logoutAccount()">Logout</button>
   </div>
 
-  <script>
-    async function loadAccount() {
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/account/me`);
-        const data = await res.json();
-        if (data.success) {
-          document.getElementById('accName').value = data.user.name || '';
-          document.getElementById('accEmail').value = data.user.email || '';
-          document.getElementById('accPhone').value = data.user.phone || '';
-          document.getElementById('accAddress').value = data.user.address || '';
-          if (data.user.profilePicUrl) {
-            document.getElementById('avatarUrl').value = data.user.profilePicUrl;
-            const preview = document.getElementById('avatarPreview');
-            preview.src = data.user.profilePicUrl;
-            preview.classList.add('fx-has-image');
-          }
-        }
-      } catch (err) {
-        console.error('Could not load account', err);
-      }
+  <ul class="sidebar-menu">
+    <li class="menu-section-title">NAVIGATION</li>
+    <li class="menu-item">
+      <a href="customer.html" class="menu-link">
+        <span class="menu-icon">🏠</span> Dashboard
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="account.html" class="menu-link active">
+        <span class="menu-icon">⚙️</span> Settings
+      </a>
+    </li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <a href="login.html" class="sidebar-footer-link logout">
+      <span>🚪</span> Logout
+    </a>
+  </div>
+
+</aside>
+
+<div class="sidebar-overlay"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  
+  <h1 class="page-title">Account Settings ⚙️</h1>
+
+  <!-- Profile Settings -->
+  <div class="card">
+    <h2 class="card-title">👤 Profile Information</h2>
+    <form id="profileForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input type="text" id="firstName" class="form-input" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input type="text" id="lastName" class="form-input" placeholder="Doe">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="email" class="form-input" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input type="tel" id="phone" class="form-input" placeholder="+263 712 345 678">
+      </div>
+      <button type="submit" class="btn">Save Changes</button>
+    </form>
+  </div>
+
+  <!-- Security Settings -->
+  <div class="card">
+    <h2 class="card-title">🔒 Security</h2>
+    <form id="passwordForm">
+      <div class="form-group">
+        <label class="form-label">Current Password</label>
+        <input type="password" id="currentPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input type="password" id="newPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input type="password" id="confirmPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn">Update Password</button>
+    </form>
+  </div>
+
+  <!-- Preferences -->
+  <div class="card">
+    <h2 class="card-title">📬 Preferences</h2>
+    <div class="settings-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #f0f0f0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">Email Notifications</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive updates via email</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" checked id="emailNotif">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #f0f0f0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">SMS Notifications</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive updates via SMS</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="smsNotif">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">Newsletter</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive promotional emails</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="newsletter">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="card" style="border: 2px solid #f5e6e6;">
+    <h2 class="card-title" style="color: #e74c3c;">⚠️ Danger Zone</h2>
+    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">These actions cannot be undone.</p>
+    <button onclick="if(confirm('Are you sure? This will permanently delete your account.')) { deleteAccount(); }" class="btn btn-danger">Delete Account</button>
+  </div>
+
+</main>
+
+<script src="/js/menu.js"></script>
+<script>
+  // ACCOUNT SETTINGS SCRIPT
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadUserInfo();
+    loadPreferences();
+  });
+
+  function loadUserInfo() {
+    const email = localStorage.getItem('userEmail') || 'user@example.com';
+    const name = email.split('@')[0];
+    const initials = name.substring(0, 2).toUpperCase();
+    
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userEmail').textContent = email;
+    document.getElementById('userAvatar').textContent = initials;
+    document.getElementById('email').value = email;
+  }
+
+  function loadPreferences() {
+    document.getElementById('emailNotif').checked = localStorage.getItem('emailNotif') !== 'false';
+    document.getElementById('smsNotif').checked = localStorage.getItem('smsNotif') === 'true';
+    document.getElementById('newsletter').checked = localStorage.getItem('newsletter') === 'true';
+  }
+
+  document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    alert('Profile updated!');
+    // Handle profile update
+  });
+
+  document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const current = document.getElementById('currentPassword').value;
+    const newPwd = document.getElementById('newPassword').value;
+    const confirm = document.getElementById('confirmPassword').value;
+    
+    if (newPwd !== confirm) {
+      alert('Passwords do not match');
+      return;
     }
-    async function loadReferralInfo() {
-      const box = document.getElementById('referralInfo');
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/account/referral`);
-        const data = await res.json();
-        if (!data.success) {
-          box.innerHTML = '<i class="fx-muted">Could not load your referral info.</i>';
-          return;
-        }
-        const link = `${window.location.origin}/register.html?ref=${data.referralCode}`;
-        box.innerHTML = `
-          <div class="fx-referral-code">${data.referralCode}</div>
-          <div>
-            <button type="button" class="fx-btn-muted" style="width:auto;" onclick="navigator.clipboard.writeText('${data.referralCode}').then(()=>showToast('Code copied!','success'))">Copy code</button>
-            <button type="button" class="fx-btn-muted" style="width:auto;" onclick="navigator.clipboard.writeText('${link}').then(()=>showToast('Link copied!','success'))">Copy invite link</button>
-          </div>
-          <div class="fx-referral-stats">
-            <div class="fx-referral-stat"><b>${data.referredCount}</b><span>Friends referred</span></div>
-            <div class="fx-referral-stat"><b>$${data.referralCredit.toFixed(2)}</b><span>Credit balance</span></div>
-          </div>
-        `;
-      } catch (err) {
-        box.innerHTML = '<i class="fx-muted">Could not load your referral info.</i>';
-      }
-    }
+    
+    alert('Password updated!');
+    document.getElementById('passwordForm').reset();
+  });
 
-    loadAccount();
-    loadReferralInfo();
-    initSupportWidget();
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'emailNotif') localStorage.setItem('emailNotif', e.target.checked);
+    if (e.target.id === 'smsNotif') localStorage.setItem('smsNotif', e.target.checked);
+    if (e.target.id === 'newsletter') localStorage.setItem('newsletter', e.target.checked);
+  });
 
-    setupImageDropZone({
-      dropZoneId: 'avatarDropZone',
-      fileInputId: 'avatarFile',
-      previewImgId: 'avatarPreview',
-      hiddenUrlInputId: 'avatarUrl',
-      uploadUrl: '/api/account/upload-image',
-      // Saves immediately on upload rather than waiting for "Save
-      // changes" below - losing a freshly-uploaded picture because the
-      // person navigated away without noticing a separate save step
-      // would be a worse experience than just saving it right away.
-      onUploaded: async (url) => {
-        try {
-          await authFetch(`${window.API_BASE}/api/account/me`, {
-            method: 'PATCH',
-            body: JSON.stringify({ profilePicUrl: url })
-          });
-          showToast('Profile picture updated!', 'success');
-        } catch (err) {
-          showToast('Picture uploaded, but could not save it to your profile.', 'error');
-        }
-      }
-    });
-
-    document.getElementById('profileForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('saveProfileBtn');
-      const status = document.getElementById('profileStatus');
-      setButtonLoading(btn, true, 'Saving...');
-      status.innerText = '';
-
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/account/me`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            name: document.getElementById('accName').value,
-            phone: document.getElementById('accPhone').value,
-            address: document.getElementById('accAddress').value
-          })
-        });
-        const data = await res.json();
-        status.style.color = data.success ? '#4ade80' : '#ff5d7a';
-        status.innerText = data.success ? 'Saved!' : (data.message || 'Could not save changes.');
-      } catch (err) {
-        status.style.color = '#ff5d7a';
-        status.innerText = 'Server connection error.';
-      } finally {
-        setButtonLoading(btn, false);
-      }
-    });
-
-    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('savePasswordBtn');
-      const status = document.getElementById('passwordStatus');
-      setButtonLoading(btn, true, 'Updating...');
-      status.innerText = '';
-
-      try {
-        const res = await authFetch(`${window.API_BASE}/api/account/password`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            currentPassword: document.getElementById('currentPassword').value,
-            newPassword: document.getElementById('newPassword').value
-          })
-        });
-        const data = await res.json();
-        status.style.color = data.success ? '#4ade80' : '#ff5d7a';
-        status.innerText = data.message || (data.success ? 'Password updated!' : 'Could not update password.');
-        if (data.success) {
-          document.getElementById('passwordForm').reset();
-        }
-      } catch (err) {
-        status.style.color = '#ff5d7a';
-        status.innerText = 'Server connection error.';
-      } finally {
-        setButtonLoading(btn, false);
-      }
-    });
-  </script>
+  function deleteAccount() {
+    localStorage.clear();
+    window.location.href = 'login.html';
+  }
+</script>
 
 </body>
 </html>

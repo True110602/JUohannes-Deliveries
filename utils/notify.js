@@ -3,7 +3,7 @@ const Notification = require('../models/Notification');
 // Persists the notification (so it's still there next time they open the
 // app, even if they weren't online right now) AND pushes it live over
 // Socket.IO to that person's room if they're currently connected - see
-// the 'register' handler in server.js for how sockets join that room.
+// the io.use / connection handlers in server.js for how sockets join that room.
 // Silently does nothing if email is missing, so callers never need to
 // guard against e.g. a guest order having no customerEmail.
 async function notifyUser(io, email, { title, message, relatedOrderId } = {}) {

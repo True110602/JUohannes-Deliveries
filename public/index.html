@@ -81,42 +81,12 @@
 
       <!-- Registration Redirect Option -->
       <div class="fx-center-text fx-muted">
-        Don't have an account? <a href="#" id="showRegisterBtn" class="fx-link">Register here</a>
+        Don't have an account? <a href="register.html" class="fx-link">Register here</a>
       </div>
     </div>
 
     <p class="fx-muted fx-center-text" style="margin-top:18px;">Fast, live-tracked deliveries across the city.</p>
   </div>
-  </div>
-
-  <!-- Registration Modal / Form Popup -->
-  <div id="registerModal" class="fx-modal-backdrop">
-    <div class="fx-card fx-modal">
-      <div class="fx-eyebrow">New here</div>
-      <h3 style="margin-top:0;">Create new account</h3>
-
-      <form id="registerForm">
-        <label>Email / Username</label>
-        <input type="text" id="regEmail" required placeholder="Email or Username" />
-
-        <label>Password</label>
-        <input type="password" id="regPassword" required placeholder="Password" />
-
-        <label>Account Role</label>
-        <select id="regRole">
-          <option value="customer">Customer</option>
-          <option value="driver">Driver</option>
-          <option value="merchant">Merchant</option>
-        </select>
-
-        <div class="fx-row-end">
-          <button type="button" id="btnCancelRegister" class="fx-btn-muted" style="width:auto;">Cancel</button>
-          <button type="submit" style="width:auto;">Register</button>
-        </div>
-      </form>
-
-      <p id="regStatus"></p>
-    </div>
   </div>
 
   <!-- Password Reset Modal -->
@@ -158,11 +128,6 @@
       const loginForm = document.getElementById('loginForm');
       const loginStatus = document.getElementById('loginStatus');
       const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
-      const showRegisterBtn = document.getElementById('showRegisterBtn');
-      const registerModal = document.getElementById('registerModal');
-      const registerForm = document.getElementById('registerForm');
-      const regStatus = document.getElementById('regStatus');
-      const btnCancelRegister = document.getElementById('btnCancelRegister');
       const resetPasswordModal = document.getElementById('resetPasswordModal');
       const btnSendCode = document.getElementById('btnSendCode');
       const btnResetPassword = document.getElementById('btnResetPassword');
@@ -172,13 +137,10 @@
 
       // Helpers
       function closeModals() {
-        registerModal.classList.remove('fx-open');
         resetPasswordModal.classList.remove('fx-open');
-        regStatus.innerText = '';
         resetModalStatus.innerText = '';
       }
 
-      btnCancelRegister.addEventListener('click', closeModals);
       btnCancelStep1.addEventListener('click', closeModals);
       btnCancelStep2.addEventListener('click', closeModals);
 
@@ -222,64 +184,7 @@
         }
       });
 
-      // --- 2. REGISTER ACCOUNT ---
-      showRegisterBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        registerModal.classList.add('fx-open');
-      });
-
-      registerForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('regEmail').value.trim();
-        const password = document.getElementById('regPassword').value;
-        const role = document.getElementById('regRole').value;
-        const submitBtn = e.target.querySelector('button[type="submit"]');
-
-        regStatus.style.color = '';
-        regStatus.innerText = 'Creating account...';
-        setButtonLoading(submitBtn, true, 'Creating...');
-
-        try {
-          const res = await fetch((window.API_BASE || '') + '/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, role })
-          });
-
-          const data = await res.json();
-          setButtonLoading(submitBtn, false);
-
-          if (data.success) {
-            // Save token directly if returned on register
-            if (data.token) {
-              localStorage.setItem('token', data.token);
-            }
-            regStatus.style.color = '#4ade80';
-            regStatus.innerText = 'Account created! Redirecting...';
-            setTimeout(() => {
-              closeModals();
-              if (data.token) {
-                window.location.href = data.redirectUrl || '/customer.html';
-              } else {
-                document.getElementById('email').value = email;
-                document.getElementById('password').value = password;
-                loginStatus.style.color = '#4ade80';
-                loginStatus.innerText = 'Account ready. Click Login below!';
-              }
-            }, 1200);
-          } else {
-            regStatus.style.color = '#ff5d7a';
-            regStatus.innerText = data.message || 'Registration failed.';
-          }
-        } catch (err) {
-          console.error(err);
-          setButtonLoading(submitBtn, false);
-          regStatus.style.color = '#ff5d7a';
-          regStatus.innerText = 'Server error registering user.';
-        }
-      });
-
-      // --- 3. FORGOT PASSWORD ---
+      // --- 2. FORGOT PASSWORD ---
       forgotPasswordBtn.addEventListener('click', (e) => {
         e.preventDefault();
         resetPasswordModal.classList.add('fx-open');

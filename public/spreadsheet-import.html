@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Product Import - Merchant Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab-btn {
+            padding: 12px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            background: #f0f1ff;
+            border-color: #764ba2;
+        }
+
+        .upload-area.dragover {
+            background: #e8eaff;
+            border-color: #764ba2;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .upload-subtext {
+            font-size: 12px;
+            color: #999;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .preview-table thead {
+            background: #f5f5f5;
+        }
+
+        .preview-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .preview-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .preview-table tbody tr:hover {
+            background: #f9f9f9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #721c24;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #155724;
+        }
+
+        .info-message {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #0c5460;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+            text-transform: uppercase;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+            color: #666;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .history-list {
+            list-style: none;
+        }
+
+        .history-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-info {
+            flex: 1;
+        }
+
+        .history-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .history-meta {
+            font-size: 12px;
+            color: #999;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+
+            .header {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .preview-table {
+                font-size: 12px;
+            }
+
+            .preview-table th,
+            .preview-table td {
+                padding: 8px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Bulk Product Import</h1>
+            <p>Upload a spreadsheet to quickly add multiple products to your catalog</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('upload')">📤 Upload</button>
+                <button class="tab-btn" onclick="switchTab('preview')">👁️ Preview</button>
+                <button class="tab-btn" onclick="switchTab('history')">📋 History</button>
+            </div>
+
+            <!-- UPLOAD TAB -->
+            <div id="upload" class="tab-content active">
+                <div class="section">
+                    <div class="section-title">Download Template</div>
+                    <p style="color: #666; margin-bottom: 15px;">Start by downloading our template spreadsheet. It contains example products and all the columns you need.</p>
+                    <button class="btn btn-primary" onclick="downloadTemplate()">
+                        ⬇️ Download Template
+                    </button>
+                </div>
+
+                <div style="margin: 30px 0; padding: 20px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+                    <strong>Template Format:</strong>
+                    <ul style="margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+                        <li><strong>Name</strong> (required) - Product name</li>
+                        <li><strong>Price</strong> (required) - Numeric price (e.g., 15.99)</li>
+                        <li><strong>Description</strong> (optional) - Product details</li>
+                        <li><strong>ImageUrl</strong> (optional) - Full URL to image</li>
+                        <li><strong>InStock</strong> (optional) - Yes/No/True/False (defaults to Yes)</li>
+                        <li><strong>Options</strong> (optional) - Format: <code>Size:Small,Large|Color:Red,Blue</code></li>
+                    </ul>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Upload Your File</div>
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">Click to upload or drag and drop</div>
+                        <div class="upload-subtext">Excel (.xlsx) or CSV files up to 5MB</div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)">
+
+                    <div id="uploadStatus"></div>
+                </div>
+            </div>
+
+            <!-- PREVIEW TAB -->
+            <div id="preview" class="tab-content">
+                <div id="previewContent"></div>
+            </div>
+
+            <!-- HISTORY TAB -->
+            <div id="history" class="tab-content">
+                <div class="section">
+                    <div class="section-title">Import History</div>
+                    <div id="historyContent">
+                        <p style="color: #999; text-align: center; padding: 40px;">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Confirm Import</div>
+            <div class="modal-body">
+                <p>Ready to import <strong id="confirmCount">0</strong> products to your catalog?</p>
+                <p style="margin-top: 10px; font-size: 12px; color: #999;">You can edit individual products later.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+                <button class="btn btn-success" onclick="confirmImport()">Proceed with Import</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPreviewData = null;
+        let currentValidProducts = null;
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            // Load history when switching to history tab
+            if (tabName === 'history') {
+                loadHistory();
+            }
+        }
+
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('fileInput').files = files;
+                handleFileSelect({ target: { files } });
+            }
+        });
+
+        function downloadTemplate() {
+            fetch('/api/spreadsheet/template')
+                .then(response => response.blob())
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'product-template.xlsx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                })
+                .catch(err => showError('Failed to download template: ' + err.message));
+        }
+
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            const file = files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<div style="margin-top: 20px;"><div class="loading"></div> Validating file...</div>';
+
+            fetch('/api/spreadsheet/validate', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentPreviewData = data;
+                        displayPreview(data.preview);
+                        switchTab('preview');
+                        statusDiv.innerHTML = '';
+                    } else {
+                        statusDiv.innerHTML = `<div class="error-message">${data.message}<br>${data.errors?.join('<br>')}</div>`;
+                    }
+                })
+                .catch(err => {
+                    statusDiv.innerHTML = `<div class="error-message">Upload failed: ${err.message}</div>`;
+                });
+        }
+
+        function displayPreview(preview) {
+            const validProducts = preview.products.filter(p => p.status === 'pending');
+            const invalidProducts = preview.products.filter(p => p.status === 'error');
+            currentValidProducts = validProducts;
+
+            let html = `
+                <div class="section">
+                    <div class="section-title">Preview: ${preview.products[0]?.rowNumber ? currentPreviewData.fileName : 'Data'}</div>
+                    
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-number">${preview.totalRows}</div>
+                            <div class="stat-label">Total Rows</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" style="color: #4caf50;">${preview.validCount}</div>
+                            <div class="stat-label">Valid</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" style="color: #f44336;">${preview.invalidCount}</div>
+                            <div class="stat-label">Errors</div>
+                        </div>
+                    </div>
+            `;
+
+            if (invalidProducts.length > 0) {
+                html += '<div class="error-message"><strong>Errors Found:</strong><ul style="margin-left: 20px; margin-top: 10px;">';
+                invalidProducts.forEach(p => {
+                    html += `<li>Row ${p.rowNumber}: ${p.error}</li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            if (validProducts.length > 0) {
+                html += '<div class="info-message">✓ <strong>' + validProducts.length + ' products ready to import</strong></div>';
+                html += '<table class="preview-table"><thead><tr><th>Row</th><th>Name</th><th>Price</th><th>Description</th><th>Status</th></tr></thead><tbody>';
+                
+                validProducts.forEach(p => {
+                    html += `<tr>
+                        <td>#${p.rowNumber}</td>
+                        <td>${p.name}</td>
+                        <td>$${p.price.toFixed(2)}</td>
+                        <td>${(p.description || '').substring(0, 30)}${p.description?.length > 30 ? '...' : ''}</td>
+                        <td><span class="status-badge status-pending">Ready</span></td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table>';
+
+                html += `
+                    <div class="button-group">
+                        <button class="btn btn-secondary" onclick="resetImport()">← Back</button>
+                        <button class="btn btn-success" onclick="startImport(${validProducts.length})">✓ Import ${validProducts.length} Products</button>
+                    </div>
+                `;
+            }
+
+            document.getElementById('previewContent').innerHTML = html;
+        }
+
+        function startImport(count) {
+            document.getElementById('confirmCount').textContent = count;
+            document.getElementById('confirmModal').classList.add('active');
+        }
+
+        function confirmImport() {
+            closeModal('confirmModal');
+
+            if (!currentPreviewData || !currentValidProducts) {
+                showError('No valid products to import');
+                return;
+            }
+
+            const previewDiv = document.getElementById('previewContent');
+            previewDiv.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading"></div> Importing products...</div>';
+
+            const importData = {
+                fileName: currentPreviewData.fileName,
+                products: currentValidProducts
+            };
+
+            fetch('/api/spreadsheet/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(importData)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showSuccess(`✓ ${data.results.successCount} products imported successfully!`);
+                        previewDiv.innerHTML = `
+                            <div class="success-message" style="text-align: center; font-size: 16px;">
+                                <strong>${data.results.successCount} Products Imported!</strong><br>
+                                ${data.results.failureCount > 0 ? `${data.results.failureCount} errors occurred` : 'All products were successfully added'}
+                            </div>
+                            <div class="button-group" style="margin-top: 20px;">
+                                <button class="btn btn-primary" onclick="resetImport()">Import More</button>
+                                <button class="btn btn-secondary" onclick="switchTab('history')">View History</button>
+                            </div>
+                        `;
+                    } else {
+                        showError('Import failed: ' + data.message);
+                    }
+                })
+                .catch(err => {
+                    showError('Import error: ' + err.message);
+                });
+        }
+
+        function resetImport() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('uploadStatus').innerHTML = '';
+            document.getElementById('previewContent').innerHTML = '';
+            currentPreviewData = null;
+            currentValidProducts = null;
+            switchTab('upload');
+        }
+
+        function loadHistory() {
+            fetch('/api/spreadsheet/history')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.imports.length > 0) {
+                        let html = '<ul class="history-list">';
+                        data.imports.forEach(imp => {
+                            const date = new Date(imp.createdAt).toLocaleDateString();
+                            const time = new Date(imp.createdAt).toLocaleTimeString();
+                            html += `
+                                <li class="history-item">
+                                    <div class="history-info">
+                                        <div class="history-name">${imp.fileName}</div>
+                                        <div class="history-meta">
+                                            ${imp.successCount} imported • ${imp.failureCount} errors • ${date} at ${time}
+                                        </div>
+                                    </div>
+                                    <span class="status-badge ${imp.successCount > 0 ? 'status-success' : 'status-error'}">
+                                        ${imp.status.toUpperCase()}
+                                    </span>
+                                </li>
+                            `;
+                        });
+                        html += '</ul>';
+                        document.getElementById('historyContent').innerHTML = html;
+                    } else {
+                        document.getElementById('historyContent').innerHTML = '<p style="color: #999; text-align: center; padding: 40px;">No import history yet</p>';
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('historyContent').innerHTML = '<div class="error-message">Failed to load history</div>';
+                });
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showError(message) {
+            console.error(message);
+            // You could also toast or alert here
+        }
+
+        function showSuccess(message) {
+            console.log(message);
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('confirmModal');
+            if (event.target === modal) {
+                modal.classList.remove('active');
+            }
+        }
+    </script>
+</body>
+</html>

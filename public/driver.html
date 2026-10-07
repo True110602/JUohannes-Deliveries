@@ -1,217 +1,427 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
-  <script src="/js/geo-helpers.js"></script>
-
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Johannes Deliveries - Driver Portal</title>
-
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/theme.css" />
-  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
-  <script src="/socket.io/socket.io.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Driver Dashboard - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; }
+    .page-title { font-size: 28px; font-weight: 700; margin: 0 0 25px 0; color: #333; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .card-title { font-size: 12px; color: #999; text-transform: uppercase; font-weight: 600; margin-bottom: 10px; }
+    .card-value { font-size: 32px; font-weight: 700; color: #667eea; margin-bottom: 15px; }
+    #map { height: 500px; border-radius: 8px; background: #f0f0f0; }
+    .btn { display: inline-block; padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; font-weight: 600; margin-top: 10px; }
+    .btn:hover { background: #764ba2; }
+    .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #4CAF50; margin-right: 8px; }
+    .status-offline { background: #f44336; }
+    .location-status { font-size: 12px; color: #666; margin-top: 8px; }
+  </style>
 </head>
 <body>
 
-  <div class="fx-shell" style="max-width: 640px;">
-  <div class="fx-card">
-    <div class="fx-nav" style="margin-bottom:14px;">
-      <div class="fx-nav-title">
-        <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark" style="width:32px;height:32px;">
-        <div>
-          <span class="fx-pill">Driver</span>
-          <h2 style="margin:6px 0 0;">Navigation portal</h2>
-        </div>
-      </div>
-      <span id="navAvatarContainer"></span>
-      <button class="fx-btn-ghost" style="width:auto;" onclick="window.location.href='/account.html'">My Account</button>
-      <button class="fx-btn-danger" style="width:auto;" onclick="logoutDriver()">Logout</button>
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="navbar-left">
+    <button class="hamburger" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <a href="/" class="navbar-logo">📦 JUohannes</a>
+  </div>
+  <div class="navbar-right">
+    <div class="notification-icon" onclick="alert('New order!')" style="cursor:pointer;">
+      🔔
+      <span class="notification-badge" id="notifBadge" style="display:none;">1</span>
     </div>
-
-    <div class="status-box" id="connectionStatus">Status: Offline</div>
-
-    <label>Driver ID / Name</label>
-    <input type="text" id="driverId" readonly>
-
-    <button id="trackBtn" onclick="startTracking(this)" style="margin-top:16px;">Go Online & Track GPS</button>
-
-    <label>Active Delivery</label>
-    <div id="ordersList" style="margin-bottom:16px;">No orders assigned yet.</div>
-
-    <label>Live GPS Position</label>
-    <div id="map" style="width:100%; height:350px; margin-top:10px;"></div>
+    <div class="profile-icon" onclick="window.location.href='account.html'" style="cursor:pointer;">👤</div>
   </div>
+</nav>
+
+<!-- SIDEBAR -->
+<aside class="sidebar hidden">
+  
+  <!-- User Header -->
+  <div class="sidebar-header">
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar" id="userAvatar">DR</div>
+      <div class="sidebar-user-info">
+        <h3 id="userName">Driver</h3>
+        <p id="userEmail">driver@example.com</p>
+      </div>
+    </div>
   </div>
 
-  <script src="/vendor/leaflet/leaflet.js"></script>
-  <script>
-    // --- Everything below is defined at the top level (global scope) on
-    // purpose - onclick="..." attributes and socket.on(...) callbacks can
-    // only find functions that are actually global. A previous version of
-    // this file nested logoutDriver/renderMyOrders inside a .then()
-    // callback, which meant the Logout button silently failed (the
-    // function didn't exist where the browser was looking for it).
+  <!-- Statistics -->
+  <div class="sidebar-stats">
+    <div class="stat-item">
+      <div class="stat-label">🏃 Active Deliveries</div>
+      <div class="stat-value" data-stat="activeDeliveries">0</div>
+      <div class="stat-change">right now</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">💰 Earnings Today</div>
+      <div class="stat-value" data-stat="earningsToday">$0.00</div>
+      <div class="stat-change up">↑ 5%</div>
+    </div>
+  </div>
 
-    function logoutDriver() {
-      clearAuthToken();
-      window.location.href = '/login.html';
+  <!-- Menu -->
+  <ul class="sidebar-menu">
+    
+    <li class="menu-section-title">MAIN</li>
+    <li class="menu-item">
+      <a href="driver.html" class="menu-link active">
+        <span class="menu-icon">🗺️</span>
+        Live Map
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📦</span>
+        Active Orders
+        <span class="menu-badge" id="orderBadge" style="display:none;">0</span>
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📋</span>
+        Available Orders
+      </a>
+    </li>
+
+    <li class="menu-section-title">ACCOUNT</li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">📈</span>
+        History
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="#" class="menu-link">
+        <span class="menu-icon">💰</span>
+        Earnings
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="account.html" class="menu-link">
+        <span class="menu-icon">⚙️</span>
+        Settings
+      </a>
+    </li>
+    
+  </ul>
+
+  <!-- Footer -->
+  <div class="sidebar-footer">
+    <a href="login.html" class="sidebar-footer-link logout">
+      <span>🚪</span> Logout
+    </a>
+  </div>
+
+</aside>
+
+<!-- OVERLAY -->
+<div class="sidebar-overlay"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  
+  <h1 class="page-title">Live Delivery Map 🗺️</h1>
+
+  <!-- Stats -->
+  <div class="dashboard-grid">
+    <div class="card">
+      <div class="card-title">🏃 Active Deliveries</div>
+      <div class="card-value" data-stat="activeDeliveries">0</div>
+    </div>
+    <div class="card">
+      <div class="card-title">💰 Today's Earnings</div>
+      <div class="card-value" data-stat="earningsToday">$0.00</div>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ Completed</div>
+      <div class="card-value" data-stat="completedDeliveries">0</div>
+    </div>
+    <div class="card">
+      <div class="card-title">⭐ Rating</div>
+      <div class="card-value" data-stat="driverRating">4.9</div>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div class="card">
+    <h2 class="card-title">📍 Your Location
+      <span class="status-indicator" id="locationStatus"></span>
+      <span id="locationStatusText" class="location-status">Connecting...</span>
+    </h2>
+    <div id="map"></div>
+  </div>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+<script src="/js/menu.js"></script>
+<script>
+  // DRIVER DASHBOARD SCRIPT
+  
+  let map;
+  let userMarker;
+  let socket;
+  let geolocationWatchId;
+  let lastLocation = { lat: -26.2023, lng: 28.0436 }; // Johannesburg default
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadUserInfo();
+    loadStats();
+    initMap();
+    connectSocket();
+    startLocationTracking();
+    setInterval(loadStats, 30000);
+  });
+
+  function loadUserInfo() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return;
+      
+      const payload = JSON.parse(atob(parts[1]));
+      const email = payload.email || localStorage.getItem('driverEmail') || 'driver@example.com';
+      const name = payload.email ? payload.email.split('@')[0] : 'Driver';
+      const initials = name.substring(0, 2).toUpperCase();
+      
+      document.getElementById('userName').textContent = name;
+      document.getElementById('userEmail').textContent = email;
+      document.getElementById('userAvatar').textContent = initials;
+    } catch (err) {
+      console.error('Error parsing user info:', err);
+    }
+  }
+
+  function initMap() {
+    try {
+      // Default to Johannesburg
+      map = L.map('map').setView([lastLocation.lat, lastLocation.lng], 14);
+      
+      // Use OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      // Create a blue marker for driver location
+      userMarker = L.circleMarker([lastLocation.lat, lastLocation.lng], {
+        radius: 10,
+        fillColor: '#667eea',
+        color: '#fff',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 0.8
+      }).bindPopup('📍 Your Location').addTo(map);
+
+      console.log('✅ Driver map initialized');
+    } catch (err) {
+      console.error('❌ Map initialization error:', err);
+    }
+  }
+
+  function startLocationTracking() {
+    if (!navigator.geolocation) {
+      console.error('Geolocation not supported');
+      updateLocationStatus('Geolocation not available', false);
+      return;
     }
 
-    function renderMyOrders(orders) {
-      const myEmail = document.getElementById('driverId').value;
-      const mine = orders.filter(function(o) {
-        return o.assignedDriver === myEmail && o.status !== 'delivered' && o.status !== 'cancelled';
-      });
-      const container = document.getElementById('ordersList');
-      if (!mine.length) {
-        container.innerHTML = 'No orders assigned yet.';
-        return;
-      }
-      let html = '';
-      for (let i = 0; i < mine.length; i++) {
-        const o = mine[i];
-        let btn = '';
+    console.log('Starting geolocation tracking...');
+    updateLocationStatus('Acquiring location...', true);
 
-        if (o.status === 'assigned' && o.driverAccepted === null) {
-          // Fresh assignment, awaiting this driver's response.
-          btn = '<div style="display:flex; gap:8px; margin-top:8px;">'
-            + '<button style="background:#4ade80;" onclick="respondToOrder(\'' + o._id + '\', true)">Accept</button>'
-            + '<button class="fx-btn-danger" onclick="respondToOrder(\'' + o._id + '\', false)">Decline</button>'
-            + '</div>';
-        } else if (o.status === 'assigned' && o.driverAccepted === true) {
-          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'picked_up\')">Mark Picked Up</button>';
-        } else if (o.status === 'picked_up') {
-          btn = '<button onclick="updateOrderStatus(\'' + o._id + '\',\'delivered\')">Mark Delivered</button>';
+    // Get initial position with high accuracy
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+        
+        lastLocation = { lat, lng };
+        
+        // Update map
+        if (map && userMarker) {
+          userMarker.setLatLng([lat, lng]);
+          map.setView([lat, lng], 14);
         }
 
-        const newBadge = (o.status === 'assigned' && o.driverAccepted === null)
-          ? '<span class="fx-pill" style="background:rgba(245,158,11,0.15); color:#f59e0b;">New assignment</span>'
-          : '';
-
-        // Only shown once the driver has accepted - no reason to call a
-        // customer about a delivery they haven't committed to yet.
-        const callBtn = (o.driverAccepted === true && o.customerPhone)
-          ? '<a href="tel:' + o.customerPhone + '" class="fx-call-btn">📞 Call customer</a>'
-          : '';
-
-        html += '<div class="fx-card" style="margin-top:10px;">'
-          + newBadge
-          + '<div><b>Order #' + o._id.slice(-6) + '</b></div>'
-          + '<div>Pickup: ' + o.pickup + '</div>'
-          + '<div>Dropoff: ' + o.dropoff + '</div>'
-          + '<div>Customer: ' + o.customerName + '</div>'
-          + '<div>Status: ' + o.status + '</div>'
-          + btn
-          + callBtn
-          + '</div>';
-      }
-      container.innerHTML = html;
-    }
-
-    async function respondToOrder(orderId, accepted) {
-      await authFetch(`${window.API_BASE}/api/orders/${orderId}/respond`, {
-        method: 'PATCH',
-        body: JSON.stringify({ accepted })
-      });
-      loadMyOrders();
-    }
-
-    async function loadMyOrders() {
-      const res = await authFetch(window.API_BASE + '/api/orders/mine');
-      renderMyOrders(await res.json());
-    }
-
-    async function updateOrderStatus(orderId, status) {
-      await authFetch(`${window.API_BASE}/api/orders/${orderId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status })
-      });
-      loadMyOrders();
-    }
-
-    // --- Session check (runs once on load) ---
-    authFetch(`${window.API_BASE}/api/check-session`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.loggedIn) {
-          window.location.href = '/login.html';
-        } else {
-          const driverInput = document.getElementById('driverId');
-          if (driverInput) driverInput.value = data.user.email;
-          loadMyOrders();
+        // Send to server
+        if (socket && socket.connected) {
+          sendLocationUpdate(lat, lng);
         }
-      });
 
-    // --- Live map + GPS tracking ---
-    const socket = io(window.API_BASE || undefined, {
-      auth: { token: getAuthToken() }
+        console.log(`✅ Location acquired: ${lat.toFixed(4)}, ${lng.toFixed(4)} (±${accuracy.toFixed(0)}m)`);
+        updateLocationStatus('Location tracking active', true);
+      },
+      (error) => {
+        console.error('Geolocation error:', error.message);
+        updateLocationStatus('Location error: ' + error.message, false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 0
+      }
+    );
+
+    // Watch position for continuous updates every 30 seconds
+    geolocationWatchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        lastLocation = { lat, lng };
+        
+        // Update marker
+        if (map && userMarker) {
+          userMarker.setLatLng([lat, lng]);
+        }
+
+        // Send location to server via Socket.io
+        if (socket && socket.connected) {
+          sendLocationUpdate(lat, lng);
+        }
+
+        console.log(`📍 Location updated: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      },
+      (error) => {
+        console.error('Location watch error:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 5000 // Allow cached position up to 5 seconds old
+      }
+    );
+  }
+
+  function sendLocationUpdate(lat, lng) {
+    if (!socket || !socket.connected) {
+      console.warn('Socket not connected, cannot send location');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    let driverId = localStorage.getItem('driverId');
+    
+    // If no driverId stored, try to extract from token
+    if (!driverId && token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          driverId = payload.id || payload.email;
+        }
+      } catch (err) {
+        console.error('Error extracting driver ID from token:', err);
+      }
+    }
+
+    if (!driverId) {
+      console.warn('No driver ID available');
+      return;
+    }
+
+    socket.emit('driver_connect', { 
+      driverId: driverId,
+      lat: lat,
+      lng: lng
     });
-    socket.on('update_orders', renderMyOrders);
+  }
 
-    const map = L.map('map').setView([-20.1350, 28.5800], 15);
-    let marker = null;
+  function updateLocationStatus(text, isActive) {
+    document.getElementById('locationStatusText').textContent = text;
+    const indicator = document.getElementById('locationStatus');
+    if (isActive) {
+      indicator.classList.remove('status-offline');
+    } else {
+      indicator.classList.add('status-offline');
+    }
+  }
 
-    addConfiguredTileLayer(map);
+  function connectSocket() {
+    socket = io({ auth: { token: localStorage.getItem('token') } });
+    
+    socket.on('connect', () => {
+      console.log('✅ Socket connected');
+      updateLocationStatus('Location tracking active', true);
 
-    let hasFirstFix = false;
+      // Send initial location
+      sendLocationUpdate(lastLocation.lat, lastLocation.lng);
+    });
 
-    function startTracking(button) {
-      const driverId = document.getElementById('driverId').value;
-      if (!driverId) {
-        alert("Session not loaded yet. Please wait a second.");
+    socket.on('new_order', (order) => {
+      console.log('New order received:', order);
+      document.getElementById('notifBadge').style.display = 'inline-block';
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      updateLocationStatus('Connection lost', false);
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      updateLocationStatus('Connection error', false);
+    });
+  }
+
+  async function loadStats() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/driver/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch stats:', response.status);
         return;
       }
 
-      setButtonLoading(button, true, 'Requesting location permission...');
-      const statusBox = document.getElementById('connectionStatus');
-      statusBox.innerText = "Status: Connecting...";
-      statusBox.style.background = "";
-      statusBox.style.color = "";
+      const data = await response.json();
 
-      watchLocation(
-        (lat, lng) => {
-          if (!hasFirstFix) {
-            hasFirstFix = true;
-            setButtonLoading(button, false);
-            statusBox.innerText = "Status: Online & Broadcasting Live";
-            statusBox.style.background = "rgba(74,222,128,0.12)";
-            statusBox.style.color = "#4ade80";
-            button.innerHTML = 'Live Tracking Active';
-            button.disabled = true;
-          }
+      if (data.success) {
+        updateAllStats('activeDeliveries', data.activeDeliveries || 0);
+        updateAllStats('earningsToday', '$' + (data.earningsToday || 0).toFixed(2));
+        updateAllStats('completedDeliveries', data.completedDeliveries || 0);
+        updateAllStats('driverRating', (data.driverRating || 4.9).toFixed(1));
 
-          map.setView([lat, lng], 16);
-
-          if (marker) {
-            marker.setLatLng([lat, lng]);
-          } else {
-            marker = L.marker([lat, lng]).addTo(map)
-              .bindPopup(`<b>${driverId}</b> (You)`)
-              .openPopup();
-          }
-
-          socket.emit('driver_connect', { driverId, lat, lng });
-        },
-        (err) => {
-          setButtonLoading(button, false);
-          statusBox.innerText = "Status: Offline";
-          statusBox.style.background = "";
-          statusBox.style.color = "";
-          alert("Error tracking location: " + err.message);
-        }
-      );
+        document.getElementById('orderBadge').textContent = data.activeDeliveries || 0;
+        document.getElementById('orderBadge').style.display = (data.activeDeliveries > 0) ? 'inline-block' : 'none';
+      }
+    } catch (err) {
+      console.error('Error loading stats:', err);
     }
+  }
 
-    initSupportWidget();
-    initNotificationCenter();
-    renderNavAvatar('navAvatarContainer');
-  </script>
+  function updateAllStats(key, value) {
+    document.querySelectorAll(`[data-stat="${key}"]`).forEach(el => {
+      el.textContent = value;
+    });
+  }
+
+  // Clean up on page unload
+  window.addEventListener('beforeunload', () => {
+    if (geolocationWatchId) {
+      navigator.geolocation.clearWatch(geolocationWatchId);
+    }
+  });
+</script>
 
 </body>
 </html>

@@ -122,25 +122,50 @@ function setupImageDropZone({ dropZoneId, fileInputId, previewImgId, hiddenUrlIn
 // beforehand - this only adds the tile layer, so markers/click-handlers
 // wired right after creating the map don't have to wait on this fetch.
 async function addConfiguredTileLayer(map) {
+  // Same CARTO fallback the server itself uses when no key is set - keeps
+  // the map usable even if the config request fails OR comes back with an
+  // unexpected/empty shape (e.g. a sleeping/misconfigured backend).
+  const FALLBACK_CFG = {
+    tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    maxZoom: 19
+  };
+
   let cfg;
   try {
     const res = await fetch(`${window.API_BASE || ''}/api/map-config`);
-    cfg = await res.json();
+    const data = await res.json();
+    // Guard against a 200 response that isn't actually usable (missing
+    // field, null body, wrong shape) - without this, a bad response here
+    // silently skips the tile layer entirely and leaves the map showing
+    // nothing but Leaflet's own default attribution credit.
+    cfg = (data && typeof data.tileUrlTemplate === 'string') ? data : FALLBACK_CFG;
   } catch (err) {
-    // Same CARTO fallback the server itself uses when no key is set -
-    // keeps the map usable even if this one request fails.
-    cfg = {
-      tileUrlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      subdomains: 'abcd',
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      maxZoom: 19
-    };
+    cfg = FALLBACK_CFG;
   }
-  L.tileLayer(cfg.tileUrlTemplate, {
-    maxZoom: cfg.maxZoom || 19,
-    subdomains: cfg.subdomains || undefined,
-    attribution: cfg.attribution
-  }).addTo(map);
+
+  try {
+    // Only include `subdomains` when the config actually provides one.
+    // Explicitly passing `subdomains: undefined` overrides Leaflet's own
+    // internal default ('abc') with undefined instead of leaving it
+    // alone, which crashes _getSubdomain() on every tile request - this
+    // is why providers like MapTiler (whose URLs have no {s} and whose
+    // config has no subdomains field) rendered a totally blank map.
+    const tileOptions = {
+      maxZoom: cfg.maxZoom || 19,
+      attribution: cfg.attribution
+    };
+    if (cfg.subdomains) tileOptions.subdomains = cfg.subdomains;
+    L.tileLayer(cfg.tileUrlTemplate, tileOptions).addTo(map);
+  } catch (err) {
+    // Last-resort safety net so a bad cfg never leaves the map blank.
+    L.tileLayer(FALLBACK_CFG.tileUrlTemplate, {
+      maxZoom: FALLBACK_CFG.maxZoom,
+      subdomains: FALLBACK_CFG.subdomains,
+      attribution: FALLBACK_CFG.attribution
+    }).addTo(map);
+  }
 }
 
 function isDataSaverOn() {
@@ -389,12 +414,11 @@ function initNotificationCenter() {
   loadNotifications();
 
   // Live push: same socket.io client every map/tracking page already
-  // loads. 'register' proves who we are (server verifies the token
+  // loads. the token in the handshake proves who we are (server verifies it
   // itself - see server.js) so notifications actually land in the right
   // person's room instead of broadcasting to everyone.
   if (typeof io === 'function') {
-    fxNotificationSocket = io(window.API_BASE || undefined);
-    fxNotificationSocket.emit('register', token);
+    fxNotificationSocket = io(window.API_BASE || undefined, { auth: { token } });
     fxNotificationSocket.on('notification', () => {
       // Re-fetch rather than trying to splice the pushed item into
       // whatever partial state the panel is in - simpler, and this list

@@ -2,128 +2,291 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Register - Johannes Deliveries</title>
-  <link rel="stylesheet" href="/css/theme.css" />
-  <script>if(localStorage.getItem('fx_data_saver')!=='on'){document.write('<link rel="stylesheet" href="/css/fonts.css">');}</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - JUohannes Deliveries</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 450px;
+      width: 100%;
+      padding: 40px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #999;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 20px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .error {
+      color: #f44336;
+      font-size: 14px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #ffebee;
+      border-radius: 4px;
+      display: none;
+    }
+    .success {
+      color: #4CAF50;
+      font-size: 14px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #e8f5e9;
+      border-radius: 4px;
+      display: none;
+    }
+    .login-link {
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+    .login-link a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .login-link a:hover {
+      text-decoration: underline;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 10px;
+    }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-  <div class="fx-shell fx-center">
-  <div style="width:100%; max-width:420px;">
-
-    <div class="fx-brand">
-      <img src="/assets/icon.svg" alt="Johannes Deliveries" class="fx-logo-mark">
-      <div class="fx-brand-text"><b>Johannes</b> Deliveries</div>
+  <div class="container">
+    <div class="header">
+      <div class="logo">📦</div>
+      <h1>Create Account</h1>
+      <p class="subtitle">Join JUohannes Deliveries</p>
     </div>
 
-    <div class="fx-card">
-      <div class="fx-eyebrow fx-center-text">Get started</div>
-      <h2 class="fx-center-text" style="margin-top:0;">Create your account</h2>
-      <div id="msg" class="error"></div>
+    <form id="registerForm">
+      <div class="form-group">
+        <label for="name">Full Name *</label>
+        <input type="text" id="name" placeholder="John Doe" required>
+      </div>
 
-      <form id="registerForm">
-        <label>Account Type</label>
-        <select name="role" required>
-          <option value="customer">Customer</option>
+      <div class="form-group">
+        <label for="email">Email Address *</label>
+        <input type="email" id="email" placeholder="john@example.com" required>
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Phone Number *</label>
+        <input type="tel" id="phone" placeholder="+263 7x xxx xxxx" required>
+      </div>
+
+      <div class="form-group">
+        <label for="address">Address *</label>
+        <input type="text" id="address" placeholder="123 Main Street" required>
+      </div>
+
+      <div class="form-group">
+        <label for="role">Account Type *</label>
+        <select id="role" required>
+          <option value="customer" selected>Customer</option>
           <option value="driver">Driver</option>
-          <option value="merchant">Merchant / Restaurant</option>
+          <option value="merchant">Merchant</option>
         </select>
+      </div>
 
-        <label>Full Name</label>
-        <input type="text" name="name" required placeholder="e.g. Bhekinkosi Sibanda">
+      <div class="form-group">
+        <label for="password">Password *</label>
+        <input type="password" id="password" placeholder="At least 6 characters" required minlength="6">
+      </div>
 
-        <label>Email Address / Username</label>
-        <input type="text" name="email" required placeholder="e.g. driver or name@example.com">
+      <div class="form-group">
+        <label for="referralCode">Referral Code (Optional)</label>
+        <input type="text" id="referralCode" placeholder="Enter referral code if you have one">
+      </div>
 
-        <label>Phone Number</label>
-        <input type="tel" name="phone" required placeholder="e.g. 0771234567">
+      <div id="errorMsg" class="error"></div>
+      <div id="successMsg" class="success"></div>
 
-        <label>Password</label>
-        <input type="password" name="password" required placeholder="••••••••">
+      <button type="submit" class="btn" id="submitBtn">Create Account</button>
 
-        <label>Physical Address</label>
-        <input type="text" name="address" required placeholder="e.g. Bulawayo CBD">
+      <div class="loading" id="loading">
+        <span class="spinner"></span> Creating account...
+      </div>
+    </form>
 
-        <label>Preferred Payment Method</label>
-        <select name="paymentMethod" required>
-          <option value="Cash">Cash on Delivery</option>
-          <option value="EcoCash">EcoCash</option>
-          <option value="OneMoney">OneMoney</option>
-          <option value="BankTransfer">Bank Transfer</option>
-          <option value="Card">Card</option>
-        </select>
-
-        <label>Referral Code <span class="fx-muted" style="font-weight:400;">(optional)</span></label>
-        <input type="text" name="referralCode" id="referralCodeInput" placeholder="e.g. BHEKI4821" style="text-transform:uppercase;">
-        <p class="fx-muted" id="referralHint" style="margin-top:-8px; font-size:12px; display:none;">Get 10% off your first order!</p>
-
-        <button type="submit" id="submitBtn" style="margin-top:18px;">Create Account</button>
-      </form>
-      <p class="fx-center-text fx-muted" style="margin-top:15px;">Already have an account? <a href="login.html" class="fx-link">Login here</a></p>
+    <div class="login-link">
+      Already have an account? <a href="login.html">Login here</a>
     </div>
   </div>
-  </div>
 
-  <script src="/js/config.js"></script>
-  <script src="/js/ui-helpers.js"></script>
   <script>
-    // Pre-fill the referral code from a shared invite link like
-    // /register.html?ref=BHEKI4821 (see account.html's "Copy invite link").
-    (function prefillReferralCode() {
-      const ref = new URLSearchParams(window.location.search).get('ref');
-      if (ref) {
-        document.getElementById('referralCodeInput').value = ref.toUpperCase();
-        document.getElementById('referralHint').style.display = 'block';
-      }
-    })();
-    document.getElementById('referralCodeInput').addEventListener('input', (e) => {
-      document.getElementById('referralHint').style.display = e.target.value.trim() ? 'block' : 'none';
-    });
+    // Get the API base URL - works for both localhost and Render deployment
+    const API_BASE_URL = window.location.origin;
+    
+    console.log('API Base URL:', API_BASE_URL);
+    console.log('Using endpoint:', API_BASE_URL + '/api/register');
 
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    const form = document.getElementById('registerForm');
+    const errorMsg = document.getElementById('errorMsg');
+    const successMsg = document.getElementById('successMsg');
+    const loading = document.getElementById('loading');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
-      const formData = new FormData(e.target);
-      const payload = Object.fromEntries(formData.entries());
-      const msgDiv = document.getElementById('msg');
-      const submitBtn = document.getElementById('submitBtn');
-
-      msgDiv.className = 'error';
-      msgDiv.innerText = '';
-      setButtonLoading(submitBtn, true, 'Creating Account...');
+      
+      // Hide previous messages
+      errorMsg.style.display = 'none';
+      successMsg.style.display = 'none';
+      loading.style.display = 'block';
+      submitBtn.disabled = true;
 
       try {
-        const baseUrl = window.API_BASE || '';
-        const res = await fetch(`${baseUrl}/api/register`, {
+        const payload = {
+          name: document.getElementById('name').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          phone: document.getElementById('phone').value.trim(),
+          address: document.getElementById('address').value.trim(),
+          role: document.getElementById('role').value,
+          password: document.getElementById('password').value,
+          referralCode: document.getElementById('referralCode').value.trim() || undefined
+        };
+
+        console.log('Sending registration request:', payload);
+
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify(payload)
         });
 
-        const data = await res.json();
+        console.log('Response status:', response.status);
+        const data = await response.json();
+        console.log('Response data:', data);
 
-        if (res.ok && data.success) {
-          setButtonLoading(submitBtn, false);
-          msgDiv.className = 'success';
-          msgDiv.innerText = 'Registration successful! Redirecting to login...';
+        if (data.success) {
+          // Store token
+          localStorage.setItem('token', data.token);
+          
+          // Show success message
+          successMsg.textContent = '✅ Account created successfully! Redirecting...';
+          successMsg.style.display = 'block';
+
+          // Redirect after 2 seconds
           setTimeout(() => {
-            window.location.href = '/login.html';
-          }, 1500);
+            window.location.href = data.redirectUrl || '/customer.html';
+          }, 2000);
         } else {
-          setButtonLoading(submitBtn, false);
-          msgDiv.className = 'error';
-          msgDiv.innerText = data.message || 'Registration failed. Please try again.';
+          errorMsg.textContent = '❌ ' + (data.message || 'Registration failed');
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
         }
       } catch (err) {
         console.error('Registration error:', err);
-        setButtonLoading(submitBtn, false);
-        msgDiv.className = 'error';
-        msgDiv.innerText = 'Server connection error. Please check Render backend status.';
+        errorMsg.textContent = '❌ Connection error: ' + err.message + '. Make sure the server is running at ' + API_BASE_URL;
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+      } finally {
+        loading.style.display = 'none';
       }
     });
+
+    // Log page load for debugging
+    console.log('Register page loaded');
+    console.log('Current URL:', window.location.href);
   </script>
 </body>
 </html>
