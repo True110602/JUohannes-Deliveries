@@ -276,17 +276,18 @@
   });
 
   function loadCustomerStats() {
-    const token = localStorage.getItem('customerToken');
+    const token = localStorage.getItem('token');
     
-    fetch('/api/customer/orders', {
+    fetch('/api/orders/my-history', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => {
+      .then(raw => {
+        const data = { success: Array.isArray(raw), orders: Array.isArray(raw) ? raw : [] };
         if (data.success) {
           // Update sidebar stats
-          const activeOrders = data.orders?.filter(o => o.status === 'active').length || 0;
-          const totalSpent = data.orders?.reduce((sum, o) => sum + o.total, 0) || 0;
+          const activeOrders = data.orders?.filter(o => ['pending', 'assigned', 'picked_up'].includes(o.status)).length || 0;
+          const totalSpent = data.orders?.reduce((sum, o) => sum + (o.amount || 0), 0) || 0;
           
           document.querySelectorAll('[data-stat="activeOrders"]').forEach(el => {
             el.textContent = activeOrders;
@@ -314,13 +315,13 @@
       <div class="card" style="margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <strong>${order.restaurantName || 'Restaurant'}</strong>
+            <strong>${order.lineItems?.[0]?.merchantEmail || order.item || 'Order'}</strong>
             <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">
               ${new Date(order.createdAt).toLocaleDateString()}
             </p>
           </div>
           <div style="text-align: right;">
-            <div style="font-size: 18px; font-weight: 700; color: #667eea;">$${order.total}</div>
+            <div style="font-size: 18px; font-weight: 700; color: #667eea;">$${(order.amount || 0).toFixed(2)}</div>
             <div style="font-size: 12px; color: #999; margin-top: 3px;">
               Status: <strong>${order.status}</strong>
             </div>
