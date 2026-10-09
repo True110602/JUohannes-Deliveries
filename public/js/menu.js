@@ -204,6 +204,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Placeholder links (href="#"): go somewhere real when we can, otherwise tell
+  // the user instead of silently doing nothing.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href="#"]');
+    if (!a || a.hasAttribute('data-submenu')) return;
+    e.preventDefault();
+    const label = a.textContent.replace(/\s+/g, ' ').trim();
+
+    if (/bulk import/i.test(label)) { window.location.href = '/spreadsheet-import.html'; return; }
+
+    const orders = document.getElementById('ordersContainer');
+    if (orders && /order|history/i.test(label)) {
+      document.querySelector('.sidebar-overlay.active')?.click();
+      orders.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    jdToast(label.replace(/^[^\w]+/, '') + ' is coming soon');
+  });
+
   // Escape closes the menu
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') document.querySelector('.sidebar-overlay.active')?.click();
@@ -224,4 +243,18 @@ async function updateDashboardStats(endpoint) {
   } catch (err) {
     console.error('Failed to fetch stats:', err);
   }
+}
+
+function jdToast(msg) {
+  let t = document.getElementById('jd-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'jd-toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;z-index:3000;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.25)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.opacity = '0'; }, 2200);
 }
