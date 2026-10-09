@@ -166,6 +166,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+<script src="/js/ui-helpers.js"></script>
 <script src="/js/menu.js"></script>
 <script>
   // DRIVER DASHBOARD SCRIPT
@@ -212,10 +213,7 @@
       map = L.map('map').setView([lastLocation.lat, lastLocation.lng], 14);
       
       // Use OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(map);
+      addConfiguredTileLayer(map);
 
       // Create a blue marker for driver location
       userMarker = L.circleMarker([lastLocation.lat, lastLocation.lng], {
