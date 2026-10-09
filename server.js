@@ -25,6 +25,7 @@ const accountRoutes = require('./routes/account');
 const supportRoutes = require('./routes/support');
 const notificationRoutes = require('./routes/notifications');
 const spreadsheetRoutes = require('./routes/spreadsheet');
+const { customerRouter: customerStatsRoutes, driverRouter: driverStatsRoutes } = require('./routes/stats');
 const { notifyUser, notifyRole } = require('./utils/notify');
 const { broadcastOrders } = require('./utils/realtime');
 
@@ -482,6 +483,8 @@ app.use('/api/account', accountRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/spreadsheet', spreadsheetRoutes);
+app.use('/api/customer', customerStatsRoutes);
+app.use('/api/driver', driverStatsRoutes);
 
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
