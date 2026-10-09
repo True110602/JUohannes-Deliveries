@@ -281,7 +281,7 @@
     if (!token) return;
 
     try {
-      const response = await fetch('/api/orders/my-orders', {
+      const response = await fetch('/api/orders/my-history', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -291,10 +291,10 @@
       }
 
       const data = await response.json();
-      const orders = data.orders || [];
+      const orders = Array.isArray(data) ? data : (data.orders || []);
 
       // Check if there's an active delivery to track
-      const activeDelivery = orders.find(o => ['assigned', 'picked_up', 'in_progress'].includes(o.status));
+      const activeDelivery = orders.find(o => ['assigned', 'picked_up'].includes(o.status));
       if (activeDelivery) {
         displayMapForDelivery(activeDelivery);
       } else {
@@ -309,11 +309,11 @@
         container.innerHTML = orders.slice(0, 5).map(order => `
           <div class="order-item">
             <div>
-              <div class="order-name">${order.merchantEmail || 'Restaurant'}</div>
+              <div class="order-name">${order.lineItems?.[0]?.merchantEmail || order.item || 'Order'}</div>
               <div class="order-date">${new Date(order.createdAt).toLocaleDateString()}</div>
               <div class="order-status">Status: ${order.status}</div>
             </div>
-            <div class="order-price">$${(order.total || 0).toFixed(2)}</div>
+            <div class="order-price">$${(order.amount || 0).toFixed(2)}</div>
           </div>
         `).join('');
       }
