@@ -1,4 +1,77 @@
 // HAMBURGER MENU - JAVASCRIPT
+// Loaded on every page. Pages that already ship their own navbar/sidebar markup
+// keep it; pages without one (login, register, forgot-password, ...) get a
+// navbar + sidebar injected automatically.
+
+function jdGetSession() {
+  let token = null;
+  try { token = localStorage.getItem('token'); } catch (e) {}
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    let email = payload.email || '';
+    try { email = localStorage.getItem('userEmail') || email; } catch (e) {}
+    return { role: payload.role || 'customer', email };
+  } catch (e) {
+    return null;
+  }
+}
+
+function jdBuildMenuItems(session) {
+  const link = (href, icon, label) =>
+    `<li class="menu-item"><a href="${href}" class="menu-link"><span class="menu-icon">${icon}</span>${label}</a></li>`;
+
+  if (!session) {
+    return `<li class="menu-section-title">Welcome</li>` +
+      link('/', '🏠', 'Home') +
+      link('/login.html', '🔑', 'Login') +
+      link('/register.html', '📝', 'Register') +
+      link('/forgot-password.html', '❓', 'Forgot password');
+  }
+
+  const dash = { admin: 'admin.html', merchant: 'merchant.html', driver: 'driver.html', customer: 'customer.html' };
+  let html = `<li class="menu-section-title">Main</li>` +
+    link('/' + (dash[session.role] || 'customer.html'), '📊', 'Dashboard');
+  if (session.role === 'merchant' || session.role === 'admin') {
+    html += link('/spreadsheet-import.html', '📥', 'Bulk Import');
+  }
+  html += `<li class="menu-section-title">Account</li>` + link('/account.html', '⚙️', 'Settings');
+  return html;
+}
+
+function jdInjectMenu() {
+  if (document.querySelector('.hamburger')) return; // page already has its own menu
+
+  const session = jdGetSession();
+  const initials = (session ? session.email.split('@')[0] : 'JD').substring(0, 2).toUpperCase();
+
+  document.body.classList.add('has-auto-menu');
+  document.body.insertAdjacentHTML('afterbegin', `
+<nav class="navbar">
+  <div class="navbar-left">
+    <button class="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    <a href="/" class="navbar-logo">📦 JUohannes</a>
+  </div>
+  <div class="navbar-right">
+    <a class="profile-icon" href="${session ? '/account.html' : '/login.html'}" style="text-decoration:none">👤</a>
+  </div>
+</nav>
+<aside class="sidebar hidden">
+  <div class="sidebar-header">
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar">${session ? initials : '📦'}</div>
+      <div class="sidebar-user-info">
+        <h3>${session ? session.email.split('@')[0] : 'Guest'}</h3>
+        <p>${session ? session.email : 'Not signed in'}</p>
+      </div>
+    </div>
+  </div>
+  <ul class="sidebar-menu">${jdBuildMenuItems(session)}</ul>
+  ${session ? `<div class="sidebar-footer"><a href="/login.html" class="sidebar-footer-link logout"><span>🚪</span> Logout</a></div>` : ''}
+</aside>
+<div class="sidebar-overlay"></div>`);
+}
 
 class HamburgerMenu {
   constructor() {
@@ -47,13 +120,14 @@ class HamburgerMenu {
   }
 
   toggleSidebar() {
+    if (!this.sidebar) return;
     this.sidebar.classList.toggle('hidden');
-    this.hamburger.classList.toggle('active');
+    this.hamburger?.classList.toggle('active');
     this.overlay?.classList.toggle('active');
   }
 
   closeSidebar() {
-    this.sidebar.classList.add('hidden');
+    this.sidebar?.classList.add('hidden');
     this.hamburger?.classList.remove('active');
     this.overlay?.classList.remove('active');
   }
@@ -119,7 +193,21 @@ class HamburgerMenu {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  jdInjectMenu();
   new HamburgerMenu();
+
+  // Logging out must clear the session, otherwise the login page
+  // sees the valid token and sends the user straight back in.
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.sidebar-footer-link.logout')) {
+      try { localStorage.removeItem('token'); } catch (err) {}
+    }
+  });
+
+  // Escape closes the menu
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.querySelector('.sidebar-overlay.active')?.click();
+  });
 });
 
 // Fetch and update stats from API
