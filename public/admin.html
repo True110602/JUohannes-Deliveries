@@ -221,6 +221,7 @@
 
 </main>
 
+<script src="/js/ui-helpers.js"></script>
 <script src="/js/menu.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script>
@@ -249,10 +250,7 @@
       map = L.map('map').setView(johannesburg, 12);
       
       // Use OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(map);
+      addConfiguredTileLayer(map);
       
       console.log('✅ Map initialized at Johannesburg');
     } catch (err) {
