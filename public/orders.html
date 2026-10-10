@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Orders - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">My Orders 📦</h1>
+  <p class="page-sub">Track active deliveries, look back at past orders and rate what you received.</p>
+  <div id="tabs"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('customer')) return;
+
+  const ACTIVE = ['pending', 'assigned', 'picked_up'];
+  const DONE = ['delivered', 'cancelled', 'failed'];
+  let orders = [];
+  let tab = ['active', 'history', 'reviews'].includes(JD.param('tab')) ? JD.param('tab') : 'active';
+
+  const tabsUi = JD.tabs(document.getElementById('tabs'),
+    [{ id: 'active', label: 'Active' }, { id: 'history', label: 'History' }, { id: 'reviews', label: 'Reviews' }],
+    tab, (id) => { tab = id; render(); });
+
+  const itemsText = (o) => o.lineItems && o.lineItems.length
+    ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}${Object.keys(l.selectedOptions || {}).length ? ' (' + Object.values(l.selectedOptions).map(JD.esc).join(', ') + ')' : ''}`).join(', ')
+    : JD.esc(o.item || 'Order');
+
+  const shopOf = (o) => (o.lineItems && o.lineItems[0] && o.lineItems[0].merchantEmail) || o.pickup || 'Order';
+
+  function card(o) {
+    const total = (o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0);
+    const live = ['assigned', 'picked_up'].includes(o.status);
+    return `<div class="order-card">
+      <div class="order-head">
+        <div><div class="order-title">${JD.esc(shopOf(o))}</div><div class="order-meta">${JD.date(o.createdAt, true)} · #${JD.esc(String(o._id).slice(-6))}</div></div>
+        <div style="text-align:right"><div class="order-price">${JD.money(total)}</div>${JD.badge(o.status)}</div>
+      </div>
+      <div class="order-body">
+        <div>🛒 ${itemsText(o)}</div>
+        <div>📍 Deliver to: ${JD.esc(o.dropoff)}</div>
+        <div>💳 ${JD.esc(o.paymentMethod || 'Cash')}${o.paymentStatus && o.paymentStatus !== 'n/a' ? ' · ' + JD.esc(String(o.paymentStatus).replace(/_/g, ' ')) : ''}</div>
+        ${live && o.assignedDriver ? `<div>🚗 Driver: ${JD.esc(o.assignedDriver)}${o.driverPhone ? ' · <a href="tel:' + JD.esc(o.driverPhone) + '">' + JD.esc(o.driverPhone) + '</a>' : ''}</div>` : ''}
+        ${o.paynowInstructions && ACTIVE.includes(o.status) ? `<div>ℹ️ ${JD.esc(o.paynowInstructions)}</div>` : ''}
+      </div>
+      <div class="btn-row">
+        ${live ? '<a class="btn btn-sm" href="/customer.html">📍 Track on map</a>' : ''}
+        ${o.status === 'pending' ? `<button class="btn btn-sm btn-danger" data-cancel="${o._id}">Cancel order</button>` : ''}
+        ${o.status === 'delivered' && !(o.shopRating || o.driverRating) ? '<a class="btn btn-sm btn-secondary" href="?tab=reviews">⭐ Rate this order</a>' : ''}
+      </div>
+    </div>`;
+  }
+
+  function reviewCard(o) {
+    const rated = o.shopRating || o.driverRating;
+    if (rated) {
+      return `<div class="order-card"><div class="order-head"><div><div class="order-title">${JD.esc(shopOf(o))}</div><div class="order-meta">${JD.date(o.createdAt)}</div></div>
+        <div>${o.shopRating ? '🏪 ' + '⭐'.repeat(o.shopRating) : ''}${o.driverRating ? '<br>🚗 ' + '⭐'.repeat(o.driverRating) : ''}</div></div>
+        ${o.ratingComment ? `<div class="order-body">“${JD.esc(o.ratingComment)}”</div>` : ''}</div>`;
+    }
+    const opts = '<option value="">—</option>' + [5, 4, 3, 2, 1].map(n => `<option value="${n}">${n} ${'⭐'.repeat(n)}</option>`).join('');
+    return `<div class="order-card" data-rate-card="${o._id}">
+      <div class="order-head"><div><div class="order-title">${JD.esc(shopOf(o))}</div><div class="order-meta">${JD.date(o.createdAt)} · ${itemsText(o)}</div></div><span class="badge pending">Not rated</span></div>
+      <div class="form-grid">
+        <div><label class="f">Shop</label><select data-shop>${opts}</select></div>
+        ${o.assignedDriver ? `<div><label class="f">Driver</label><select data-driver>${opts}</select></div>` : ''}
+      </div>
+      <label class="f">Comment (optional)</label><textarea rows="2" maxlength="500" data-comment></textarea>
+      <div style="margin-top:12px"><button class="btn btn-sm" data-rate="${o._id}">Submit review</button></div>
+    </div>`;
+  }
+
+  function render() {
+    const el = document.getElementById('list');
+    let rows, empty;
+    if (tab === 'active') { rows = orders.filter(o => ACTIVE.includes(o.status)); empty = ['🛍️', 'No active orders. Hungry? Browse the restaurants!']; }
+    else if (tab === 'history') { rows = orders.filter(o => DONE.includes(o.status)); empty = ['📋', 'No past orders yet.']; }
+    else { rows = orders.filter(o => o.status === 'delivered'); empty = ['⭐', 'Delivered orders show up here so you can review them.']; }
+
+    if (!rows.length) {
+      el.innerHTML = JD.empty(empty[0], empty[1]) + (tab === 'active' ? '<div style="text-align:center"><a class="btn" href="/restaurants.html">Browse restaurants</a></div>' : '');
+      return;
+    }
+    el.innerHTML = rows.map(tab === 'reviews' ? reviewCard : card).join('');
+  }
+
+  async function load() {
+    try {
+      const data = await JD.api('/api/orders/my-history');
+      orders = Array.isArray(data) ? data : (data.orders || []);
+      tabsUi.counts({
+        active: orders.filter(o => ACTIVE.includes(o.status)).length,
+        history: orders.filter(o => DONE.includes(o.status)).length,
+        reviews: orders.filter(o => o.status === 'delivered' && !(o.shopRating || o.driverRating)).length
+      });
+      render();
+    } catch (e) { JD.fail(e, document.getElementById('list')); }
+  }
+
+  document.getElementById('list').addEventListener('click', async (e) => {
+    const cancel = e.target.closest('[data-cancel]');
+    if (cancel) {
+      if (!confirm('Cancel this order?')) return;
+      cancel.disabled = true;
+      try { await JD.api(`/api/orders/${cancel.dataset.cancel}/cancel`, { method: 'PATCH' }); JD.toast('Order cancelled'); await load(); }
+      catch (err) { JD.toast(err.message); cancel.disabled = false; }
+      return;
+    }
+    const rate = e.target.closest('[data-rate]');
+    if (rate) {
+      const cardEl = rate.closest('[data-rate-card]');
+      const shop = parseInt(cardEl.querySelector('[data-shop]').value, 10) || undefined;
+      const driver = parseInt(cardEl.querySelector('[data-driver]')?.value, 10) || undefined;
+      if (!shop && !driver) return JD.toast('Pick at least one star rating');
+      rate.disabled = true;
+      try {
+        await JD.api(`/api/orders/${rate.dataset.rate}/rate`, { method: 'POST', body: { shopRating: shop, driverRating: driver, ratingComment: cardEl.querySelector('[data-comment]').value } });
+        JD.toast('Thanks for your review!'); await load();
+      } catch (err) { JD.toast(err.message); rate.disabled = false; }
+    }
+  });
+
+  load();
+});
+
+</script>
+</body>
+</html>
