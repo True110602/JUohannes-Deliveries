@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Products - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Products 🍽️</h1>
+  <p class="page-sub">Your menu — add items, update prices and mark things in or out of stock.</p>
+  <div class="toolbar">
+    <input type="search" id="search" class="grow" placeholder="Search products…">
+    <button class="btn" id="addBtn">➕ Add product</button>
+    <a class="btn btn-secondary" href="/spreadsheet-import.html">📤 Bulk import</a>
+  </div>
+  <div id="notice"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+
+  <div class="modal-back" id="modal"><div class="modal">
+    <h2 id="mTitle">Add product</h2>
+    <label class="f">Name</label><input type="text" id="fName" maxlength="80">
+    <div class="form-grid">
+      <div><label class="f">Price ($)</label><input type="number" id="fPrice" min="0" step="0.01"></div>
+      <div><label class="f">Photo</label><input type="file" id="fFile" accept="image/*"></div>
+    </div>
+    <label class="f">Description</label><textarea id="fDesc" rows="2" maxlength="300"></textarea>
+    <label class="f">Options (optional) — one group per line, like <i>Size: Small, Large</i></label>
+    <textarea id="fOpts" rows="3" placeholder="Sauce: BBQ, Peri-peri, None"></textarea>
+    <div id="mMsg"></div>
+    <div class="btn-row" style="margin-top:16px"><button class="btn" id="mSave">Save</button><button class="btn btn-secondary" data-close>Cancel</button></div>
+  </div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('merchant')) return;
+  const $ = (id) => document.getElementById(id);
+  let items = [];
+  let editing = null; // item being edited, or null when adding
+
+  async function load() {
+    try {
+      items = await JD.api('/api/merchant/catalog');
+      draw();
+    } catch (e) { JD.fail(e, $('list')); }
+  }
+
+  function draw() {
+    const q = $('search').value.trim().toLowerCase();
+    const rows = items.filter(i => i.name.toLowerCase().includes(q));
+    if (!rows.length) {
+      $('list').innerHTML = JD.empty('🍽️', items.length ? 'No products match your search.' : 'No products yet — add your first one!');
+      return;
+    }
+    $('list').innerHTML = JD.table([
+      { h: '', f: i => i.imageUrl ? `<img src="${JD.esc(i.imageUrl)}" alt="" style="width:46px;height:46px;border-radius:8px;object-fit:cover">` : '<span style="font-size:28px">🍴</span>' },
+      { h: 'Name', f: i => `<b>${JD.esc(i.name)}</b>${i.description ? `<div class="tile-meta">${JD.esc(i.description)}</div>` : ''}${i.optionGroups && i.optionGroups.length ? `<div class="tile-meta">Options: ${i.optionGroups.map(g => JD.esc(g.groupName)).join(', ')}</div>` : ''}` },
+      { h: 'Price', f: i => JD.money(i.price) },
+      { h: 'Stock', f: i => `<button class="btn btn-sm ${i.inStock ? 'btn-success' : 'btn-danger'}" data-stock="${i._id}">${i.inStock ? 'In stock' : 'Out of stock'}</button>` },
+      { h: '', f: i => `<div class="btn-row"><button class="btn btn-sm btn-secondary" data-edit="${i._id}">Edit</button><button class="btn btn-sm btn-danger" data-del="${i._id}">Delete</button></div>` }
+    ], rows);
+  }
+
+  $('search').addEventListener('input', draw);
+
+  $('list').addEventListener('click', async (e) => {
+    const st = e.target.closest('[data-stock]');
+    if (st) {
+      st.disabled = true;
+      try { await JD.api(`/api/catalog/${st.dataset.stock}/stock`, { method: 'PATCH' }); await load(); }
+      catch (err) { JD.toast(err.message); st.disabled = false; }
+      return;
+    }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) return openForm(items.find(i => i._id === ed.dataset.edit));
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const it = items.find(i => i._id === del.dataset.del);
+      if (!confirm(`Delete "${it.name}"? Past orders are not affected.`)) return;
+      try { await JD.api(`/api/catalog/${it._id}`, { method: 'DELETE' }); JD.toast('Deleted'); await load(); }
+      catch (err) { JD.toast(err.message); }
+    }
+  });
+
+  function openForm(item) {
+    editing = item || null;
+    $('mTitle').textContent = item ? 'Edit product' : 'Add product';
+    $('fName').value = item ? item.name : '';
+    $('fPrice').value = item ? item.price : '';
+    $('fDesc').value = item ? item.description || '' : '';
+    $('fOpts').value = item ? (item.optionGroups || []).map(g => `${g.groupName}: ${g.choices.join(', ')}`).join('\n') : '';
+    $('fFile').value = '';
+    $('mMsg').innerHTML = '';
+    $('modal').classList.add('show');
+  }
+  $('addBtn').addEventListener('click', () => openForm(null));
+  document.addEventListener('click', (e) => { if (e.target.matches('[data-close]') || e.target.classList.contains('modal-back')) e.target.closest('.modal-back').classList.remove('show'); });
+
+  function parseOptions(text) {
+    return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+      const [name, rest] = line.split(':');
+      return { groupName: (name || '').trim(), choices: (rest || '').split(',').map(c => c.trim()).filter(Boolean) };
+    }).filter(g => g.groupName && g.choices.length);
+  }
+
+  $('mSave').addEventListener('click', async () => {
+    const name = $('fName').value.trim();
+    const price = parseFloat($('fPrice').value);
+    if (!name) return $('mMsg').innerHTML = '<div class="error-box">Name is required.</div>';
+    if (!(price >= 0)) return $('mMsg').innerHTML = '<div class="error-box">Enter a valid price.</div>';
+
+    $('mSave').disabled = true;
+    try {
+      let imageUrl = editing ? editing.imageUrl : '';
+      const file = $('fFile').files[0];
+      if (file) {
+        const fd = new FormData(); fd.append('image', file);
+        imageUrl = (await JD.api('/api/merchant/upload-image', { method: 'POST', form: fd })).url;
+      }
+      const body = { name, price, description: $('fDesc').value.trim(), imageUrl, optionGroups: parseOptions($('fOpts').value) };
+      if (editing) await JD.api(`/api/catalog/${editing._id}`, { method: 'PATCH', body });
+      else await JD.api('/api/catalog', { method: 'POST', body });
+      $('modal').classList.remove('show');
+      JD.toast(editing ? 'Product updated' : 'Product added');
+      await load();
+    } catch (e) {
+      $('mMsg').innerHTML = `<div class="error-box">${JD.esc(e.message)}</div>`;
+    }
+    $('mSave').disabled = false;
+  });
+
+  // Approval notice
+  JD.api('/api/merchant/profile').then(r => {
+    if (r.profile && r.profile.isOpen === false) $('notice').innerHTML = '<div class="notice">Your shop is currently marked closed — customers can see it but can’t order.</div>';
+  }).catch(() => {});
+
+  await load();
+  if (JD.param('add') === '1') openForm(null);
+});
+
+</script>
+</body>
+</html>
