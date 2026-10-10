@@ -437,7 +437,7 @@ async function renderNavAvatar(containerId) {
     const data = await res.json();
     if (!data.success) return;
     if (data.user.profilePicUrl) {
-      container.innerHTML = `<img src="${data.user.profilePicUrl}" class="fx-nav-avatar" alt="Your profile picture" title="My Account" onclick="window.location.href='/account.html'">`;
+      container.innerHTML = `<img src="${escapeHtml(data.user.profilePicUrl)}" class="fx-nav-avatar" alt="Your profile picture" title="My Account" onclick="window.location.href='/account.html'">`;
     } else {
       // No picture set yet - a fallback initial beats a broken image or
       // an empty gap in the nav, and doubles as a visible hint that
