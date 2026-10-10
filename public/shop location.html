@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shop Map - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Shop Map 📍</h1>
+  <p class="page-sub">Pin where your shop is. Delivery fees are worked out from the distance between this pin and the customer’s address.</p>
+  <div class="card">
+    <div class="toolbar">
+      <button class="btn btn-secondary" id="locate">📡 Use my current location</button>
+      <span id="coords" class="tile-meta"></span>
+      <button class="btn" id="save" style="margin-left:auto">💾 Save location</button>
+    </div>
+    <div id="notice"></div>
+    <div id="map" style="height:460px;border-radius:8px;background:#e8e8ee"></div>
+    <p class="tile-meta" style="margin:10px 0 0">Tap the map or drag the pin to set your shop’s exact spot.</p>
+  </div>
+  <div class="card">
+    <h2>Open for orders</h2>
+    <label style="display:flex;gap:10px;align-items:center;font-size:14px"><input type="checkbox" id="isOpen" style="width:auto"> Customers can order from my shop right now</label>
+  </div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/ui-helpers.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('merchant')) return;
+  const $ = (id) => document.getElementById(id);
+  const DEFAULT = [-20.1325, 28.6265]; // Bulawayo - used until a pin is set
+  let marker = null, saved = null;
+
+  const map = L.map('map').setView(DEFAULT, 13);
+  L.Icon.Default.imagePath = '/vendor/leaflet/images/';
+  if (typeof addConfiguredTileLayer === 'function') addConfiguredTileLayer(map);
+  else L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
+
+  function place(lat, lng, zoom) {
+    if (!marker) {
+      marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      marker.on('dragend', () => show(marker.getLatLng().lat, marker.getLatLng().lng));
+    } else marker.setLatLng([lat, lng]);
+    if (zoom) map.setView([lat, lng], zoom);
+    show(lat, lng);
+  }
+  function show(lat, lng) { $('coords').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
+
+  map.on('click', (e) => place(e.latlng.lat, e.latlng.lng));
+
+  $('locate').addEventListener('click', () => {
+    if (!navigator.geolocation) return JD.toast('Location isn’t available on this device');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => place(pos.coords.latitude, pos.coords.longitude, 16),
+      () => JD.toast('Couldn’t get your location — tap the map instead'),
+      { timeout: 10000, enableHighAccuracy: true });
+  });
+
+  $('save').addEventListener('click', async () => {
+    if (!marker) return JD.toast('Tap the map to place your pin first');
+    const { lat, lng } = marker.getLatLng();
+    $('save').disabled = true;
+    try {
+      await JD.api('/api/merchant/profile', { method: 'PATCH', body: { shopLat: lat, shopLng: lng } });
+      saved = { lat, lng };
+      $('notice').innerHTML = '';
+      JD.toast('Shop location saved');
+    } catch (e) { JD.toast(e.message); }
+    $('save').disabled = false;
+  });
+
+  $('isOpen').addEventListener('change', async () => {
+    const want = $('isOpen').checked;
+    try { await JD.api('/api/merchant/profile', { method: 'PATCH', body: { isOpen: want } }); JD.toast(want ? 'Shop is open' : 'Shop is closed'); }
+    catch (e) { JD.toast(e.message); $('isOpen').checked = !want; }
+  });
+
+  try {
+    const { profile } = await JD.api('/api/merchant/profile');
+    $('isOpen').checked = profile.isOpen !== false;
+    if (typeof profile.shopLat === 'number' && typeof profile.shopLng === 'number') {
+      saved = { lat: profile.shopLat, lng: profile.shopLng };
+      place(profile.shopLat, profile.shopLng, 16);
+    } else {
+      $('notice').innerHTML = '<div class="notice">You haven’t set your shop location yet, so deliveries use a flat fee. Place your pin and save.</div>';
+    }
+  } catch (e) { JD.fail(e, $('notice')); }
+  setTimeout(() => map.invalidateSize(), 150);
+});
+
+</script>
+</body>
+</html>
