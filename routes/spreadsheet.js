@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { authenticateToken } = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
 const SpreadsheetImport = require('../models/SpreadsheetImport');
 const CatalogItem = require('../models/CatalogItem');
 const {
@@ -13,22 +13,39 @@ const {
 
 // Memory storage for file uploads (5MB limit)
 const storage = multer.memoryStorage();
+const ALLOWED_MIME = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+  'application/csv',
+  // Some browsers / Android WebViews send spreadsheets as a generic type,
+  // so the file extension check below is what really gates the upload.
+  'application/octet-stream'
+];
 const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
-    if (allowed.includes(file.mimetype)) {
+    const okExt = /\.(xlsx|xls|csv)$/i.test(file.originalname || '');
+    if (okExt && ALLOWED_MIME.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only Excel and CSV files are allowed'));
+      cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
     }
   }
 });
+
+// Runs multer but turns its errors (wrong type, too big) into a clean JSON
+// 400 instead of falling through to Express's default HTML error page.
+function receiveFile(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, error: err.message || 'Upload failed' });
+    next();
+  });
+}
+
+// Bulk import writes into a merchant's own catalog, so merchants only.
+const merchantOnly = requireRole('merchant');
 
 // GET /api/spreadsheet/template - Download template
 router.get('/template', (req, res) => {
@@ -43,7 +60,7 @@ router.get('/template', (req, res) => {
 });
 
 // POST /api/spreadsheet/validate - Validate before import
-router.post('/validate', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/validate', ...merchantOnly, receiveFile, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
@@ -65,15 +82,23 @@ router.post('/validate', authenticateToken, upload.single('file'), async (req, r
 });
 
 // POST /api/spreadsheet/import - Import products
-router.post('/import', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/import', ...merchantOnly, receiveFile, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
     }
 
     const merchantEmail = req.user.email;
-    const rawData = parseExcelFile(req.file.buffer);
+    let rawData;
+    try {
+      rawData = parseExcelFile(req.file.buffer);
+    } catch (parseErr) {
+      return res.status(400).json({ success: false, error: parseErr.message });
+    }
     const { validRows, errors } = validateAndNormalizeData(rawData);
+    if (validRows.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid products found in this file.' });
+    }
 
     // Create import record
     const importRecord = await SpreadsheetImport.create({
@@ -82,7 +107,8 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
       totalRows: rawData.length,
       status: 'processing',
       importData: validRows,
-      errors
+      // The history model stores errors as plain strings.
+      errors: errors.map(e => `Row ${e.row}: ${e.error}`)
     });
 
     // Import products to catalog
@@ -96,17 +122,18 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
           description: item.description,
           imageUrl: item.imageUrl,
           inStock: item.inStock,
-          options: item.options
+          optionGroups: item.optionGroups
         });
         successCount++;
       } catch (err) {
-        errors.push({ item: item.name, error: err.message });
+        errors.push({ row: item.rowNumber, error: `${item.name}: ${err.message}` });
       }
     }
 
     // Update import record
     importRecord.successCount = successCount;
     importRecord.failureCount = errors.length;
+    importRecord.errors = errors.map(e => `Row ${e.row}: ${e.error}`);
     importRecord.status = 'completed';
     importRecord.completedAt = new Date();
     await importRecord.save();
@@ -127,7 +154,7 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
 });
 
 // GET /api/spreadsheet/history - View import history
-router.get('/history', authenticateToken, async (req, res) => {
+router.get('/history', ...merchantOnly, async (req, res) => {
   try {
     const imports = await SpreadsheetImport.find({ merchantEmail: req.user.email })
       .sort({ createdAt: -1 })
@@ -140,7 +167,7 @@ router.get('/history', authenticateToken, async (req, res) => {
 });
 
 // GET /api/spreadsheet/history/:id - Get specific import
-router.get('/history/:id', authenticateToken, async (req, res) => {
+router.get('/history/:id', ...merchantOnly, async (req, res) => {
   try {
     const importRecord = await SpreadsheetImport.findById(req.params.id);
     if (!importRecord || importRecord.merchantEmail !== req.user.email) {
@@ -153,7 +180,7 @@ router.get('/history/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/spreadsheet/history/:id - Delete import history
-router.delete('/history/:id', authenticateToken, async (req, res) => {
+router.delete('/history/:id', ...merchantOnly, async (req, res) => {
   try {
     const importRecord = await SpreadsheetImport.findById(req.params.id);
     if (!importRecord || importRecord.merchantEmail !== req.user.email) {
