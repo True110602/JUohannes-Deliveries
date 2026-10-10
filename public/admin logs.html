@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logs - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Logs & Support 📋</h1>
+  <p class="page-sub">Support tickets from customers, merchants and drivers, plus announcements to everyone.</p>
+  <div class="card">
+    <h2>📣 Send an announcement</h2>
+    <div class="form-grid">
+      <div><label class="f">Title</label><input type="text" id="bTitle" maxlength="80"></div>
+      <div><label class="f">Send to</label><select id="bTarget"><option value="all">Everyone</option><option value="customer">Customers</option><option value="merchant">Merchants</option><option value="driver">Drivers</option></select></div>
+    </div>
+    <label class="f">Message</label><textarea id="bMsg" rows="2" maxlength="500"></textarea>
+    <div style="margin-top:12px"><button class="btn" id="bSend">Send</button></div>
+  </div>
+  <div id="tabs"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('admin')) return;
+  const $ = (id) => document.getElementById(id);
+  let tickets = [];
+  let tab = ['open', 'in_progress', 'resolved', 'all'].includes(JD.param('tab')) ? JD.param('tab') : 'open';
+  const tabsUi = JD.tabs($('tabs'), [{ id: 'open', label: 'Open' }, { id: 'in_progress', label: 'In progress' }, { id: 'resolved', label: 'Resolved' }, { id: 'all', label: 'All' }], tab, (id) => { tab = id; draw(); });
+
+  function draw() {
+    const rows = tab === 'all' ? tickets : tickets.filter(t => t.status === tab);
+    if (!rows.length) { $('list').innerHTML = JD.empty('📋', 'No tickets here.'); return; }
+    $('list').innerHTML = rows.map(t => `
+      <div class="order-card" data-id="${t._id}">
+        <div class="order-head">
+          <div><div class="order-title">${JD.esc(t.subject)}</div>
+            <div class="order-meta">${JD.esc(t.email || t.name || 'Guest')} · ${JD.esc(t.role)} · ${JD.date(t.createdAt, true)}${t.relatedOrderId ? ' · order #' + JD.esc(String(t.relatedOrderId).slice(-6)) : ''}</div></div>
+          ${JD.badge(t.status)}
+        </div>
+        <div class="order-body">${JD.esc(t.message)}</div>
+        <label class="f">Admin note</label>
+        <textarea rows="2" data-note placeholder="Internal note…">${JD.esc(t.adminNote || '')}</textarea>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn btn-sm btn-secondary" data-set="in_progress">In progress</button>
+          <button class="btn btn-sm btn-success" data-set="resolved">Resolve</button>
+          <button class="btn btn-sm btn-secondary" data-set="open">Reopen</button>
+          <button class="btn btn-sm" data-set="">Save note</button>
+        </div>
+      </div>`).join('');
+  }
+
+  async function load() {
+    try {
+      tickets = await JD.api('/api/support');
+      tabsUi.counts({ open: tickets.filter(t => t.status === 'open').length, in_progress: tickets.filter(t => t.status === 'in_progress').length, resolved: tickets.filter(t => t.status === 'resolved').length, all: tickets.length });
+      draw();
+    } catch (e) { JD.fail(e, $('list')); }
+  }
+
+  $('list').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-set]');
+    if (!b) return;
+    const card = b.closest('[data-id]');
+    const body = { adminNote: card.querySelector('[data-note]').value };
+    if (b.dataset.set) body.status = b.dataset.set;
+    b.disabled = true;
+    try { await JD.api('/api/support/' + card.dataset.id, { method: 'PATCH', body }); JD.toast('Saved'); await load(); }
+    catch (err) { JD.toast(err.message); b.disabled = false; }
+  });
+
+  $('bSend').addEventListener('click', async () => {
+    const title = $('bTitle').value.trim(), message = $('bMsg').value.trim();
+    if (!title || !message) return JD.toast('Add a title and a message');
+    $('bSend').disabled = true;
+    try {
+      const r = await JD.api('/api/admin/broadcast', { method: 'POST', body: { title, message, targetRole: $('bTarget').value } });
+      JD.toast('Sent to ' + r.sentTo + ' people');
+      $('bTitle').value = ''; $('bMsg').value = '';
+    } catch (err) { JD.toast(err.message); }
+    $('bSend').disabled = false;
+  });
+
+  load();
+});
+
+</script>
+</body>
+</html>
