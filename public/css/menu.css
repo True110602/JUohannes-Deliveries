@@ -504,3 +504,6 @@ body.has-auto-menu {
 body.has-auto-menu:has(> .main-content) {
   padding-top: 0;
 }
+
+/* In-page anchors (e.g. #map) shouldn't land underneath the fixed navbar */
+[id] { scroll-margin-top: 85px; }
