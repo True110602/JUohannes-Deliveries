@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurants - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Restaurants 🍽️</h1>
+  <p class="page-sub">Pick a shop, add items to your basket and order for delivery.</p>
+  <div id="shopsView">
+    <div class="toolbar">
+      <input type="search" id="search" class="grow" placeholder="Search shops…">
+      <button class="btn btn-secondary" id="favToggle">❤️ Favorites only</button>
+    </div>
+    <div id="shops"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div id="menuView" style="display:none">
+    <div class="toolbar"><button class="btn btn-secondary" id="back">← All shops</button><span id="shopTitle" style="font-weight:700;font-size:18px"></span><span id="shopRating" class="tile-meta"></span></div>
+    <div id="closedNote" class="notice" style="display:none">This shop isn't taking orders right now.</div>
+    <div id="menu" class="tile-grid"></div>
+  </div>
+
+  <div class="cart-bar" id="cartBar">
+    <span id="cartText"></span>
+    <button class="btn btn-success" id="checkoutBtn">Checkout →</button>
+  </div>
+
+  <!-- Item options modal -->
+  <div class="modal-back" id="optModal"><div class="modal">
+    <h2 id="optTitle"></h2><div id="optBody"></div>
+    <div class="btn-row" style="margin-top:16px"><button class="btn" id="optAdd">Add to basket</button><button class="btn btn-secondary" data-close>Cancel</button></div>
+  </div></div>
+
+  <!-- Checkout modal -->
+  <div class="modal-back" id="coModal"><div class="modal">
+    <h2>Checkout</h2>
+    <div id="coItems"></div>
+    <label class="f">Delivery address</label>
+    <input type="text" id="coAddr" placeholder="Street, suburb, city">
+    <div class="form-grid">
+      <div><label class="f">Payment method</label>
+        <select id="coPay"><option>Cash</option><option>EcoCash</option><option>OneMoney</option><option>Card</option><option>BankTransfer</option></select></div>
+      <div><label class="f">Tip for driver ($)</label><input type="number" id="coTip" min="0" step="0.5" value="0"></div>
+    </div>
+    <div id="coPhoneWrap" style="display:none"><label class="f">Mobile money number</label><input type="tel" id="coPhone" placeholder="07…"></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" id="coCredit" style="width:auto"> Use my referral credit <span id="coCreditAmt" class="tile-meta"></span></label>
+    <div id="coTotals" style="margin-top:14px;font-size:14px"></div>
+    <div id="coMsg"></div>
+    <div class="btn-row" style="margin-top:16px"><button class="btn btn-success" id="coPlace">Place order</button><button class="btn btn-secondary" data-close>Cancel</button></div>
+  </div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const me = JD.guard('customer');
+  if (!me) return;
+
+  // ---- state ----
+  const favKey = 'jd_favorites';
+  const loadFavs = () => { try { return JSON.parse(localStorage.getItem(favKey)) || []; } catch (e) { return []; } };
+  let favs = loadFavs();
+  let onlyFavs = JD.param('favorites') === '1';
+  let shops = [];
+  let currentShop = null;
+  let items = [];
+  let cart = []; // {item, qty, options, key}
+  let pending = null; // item being configured in the options modal
+  let quote = null;
+  let referral = null;
+
+  const $ = (id) => document.getElementById(id);
+  const saveFavs = () => { try { localStorage.setItem(favKey, JSON.stringify(favs)); } catch (e) {} };
+
+  // ---- shops ----
+  function drawShops() {
+    const q = $('search').value.trim().toLowerCase();
+    $('favToggle').className = 'btn ' + (onlyFavs ? '' : 'btn-secondary');
+    let rows = shops.filter(s => (s.shopName || '').toLowerCase().includes(q));
+    if (onlyFavs) rows = rows.filter(s => favs.includes(s.merchantEmail));
+    if (!rows.length) {
+      $('shops').innerHTML = JD.empty(onlyFavs ? '❤️' : '🍽️', onlyFavs ? 'No favorites yet — tap the heart on a shop to save it.' : 'No shops found.');
+      return;
+    }
+    $('shops').innerHTML = '<div class="tile-grid">' + rows.map(s => `
+      <div class="tile">
+        <div class="tile-img" style="${s.profilePicUrl ? `background-image:url('${JD.esc(s.profilePicUrl)}')` : ''}">${s.profilePicUrl ? '' : '🍽️'}</div>
+        <div class="tile-body">
+          <div style="display:flex;justify-content:space-between;gap:8px"><span class="tile-name">${JD.esc(s.shopName)}</span>
+            <button class="fav" data-fav="${JD.esc(s.merchantEmail)}" title="Favorite">${favs.includes(s.merchantEmail) ? '❤️' : '🤍'}</button></div>
+          <div class="tile-meta">${s.itemCount} item${s.itemCount === 1 ? '' : 's'} · ${s.isOpen ? '🟢 Open' : '🔴 Closed'}</div>
+          ${s.address ? `<div class="tile-meta">📍 ${JD.esc(s.address)}</div>` : ''}
+          <div class="tile-actions"><button class="btn btn-sm" data-open="${JD.esc(s.merchantEmail)}">View menu</button></div>
+        </div>
+      </div>`).join('') + '</div>';
+  }
+
+  async function loadShops() {
+    try { shops = await JD.api('/api/catalog/shops'); drawShops(); }
+    catch (e) { JD.fail(e, $('shops')); }
+  }
+
+  $('search').addEventListener('input', drawShops);
+  $('favToggle').addEventListener('click', () => { onlyFavs = !onlyFavs; drawShops(); });
+  $('shops').addEventListener('click', (e) => {
+    const f = e.target.closest('[data-fav]');
+    if (f) {
+      const em = f.dataset.fav;
+      favs = favs.includes(em) ? favs.filter(x => x !== em) : [...favs, em];
+      saveFavs(); drawShops(); return;
+    }
+    const o = e.target.closest('[data-open]');
+    if (o) openShop(o.dataset.open);
+  });
+
+  // ---- menu ----
+  async function openShop(email) {
+    const shop = shops.find(s => s.merchantEmail === email);
+    if (cart.length && currentShop && currentShop.merchantEmail !== email) {
+      if (!confirm('Your basket has items from another shop. Clear it and switch?')) return;
+      cart = []; drawCart();
+    }
+    currentShop = shop;
+    $('shopsView').style.display = 'none';
+    $('menuView').style.display = '';
+    $('shopTitle').textContent = shop.shopName;
+    $('shopRating').textContent = '';
+    $('closedNote').style.display = shop.isOpen ? 'none' : '';
+    $('menu').innerHTML = '<div class="empty">Loading menu…</div>';
+    window.scrollTo(0, 0);
+    try {
+      const [list, rating] = await Promise.all([
+        JD.api('/api/catalog?merchant=' + encodeURIComponent(email)),
+        JD.api('/api/orders/ratings/shop/' + encodeURIComponent(email)).catch(() => null)
+      ]);
+      items = list;
+      if (rating && rating.average) $('shopRating').textContent = `⭐ ${rating.average} (${rating.count} review${rating.count === 1 ? '' : 's'})`;
+      drawMenu();
+    } catch (e) { JD.fail(e, $('menu')); }
+  }
+
+  function drawMenu() {
+    if (!items.length) { $('menu').innerHTML = JD.empty('🍽️', 'This shop has no items yet.'); return; }
+    $('menu').innerHTML = items.map(i => `
+      <div class="tile">
+        <div class="tile-img" style="${i.imageUrl ? `background-image:url('${JD.esc(i.imageUrl)}')` : ''}">${i.imageUrl ? '' : '🍴'}</div>
+        <div class="tile-body">
+          <div class="tile-name">${JD.esc(i.name)}</div>
+          ${i.description ? `<div class="tile-meta">${JD.esc(i.description)}</div>` : ''}
+          <div class="tile-actions"><span class="tile-price">${JD.money(i.price)}</span>
+            ${i.inStock === false ? '<span class="badge bad">Out of stock</span>'
+              : `<button class="btn btn-sm" style="margin-left:auto" data-add="${i._id}" ${currentShop.isOpen ? '' : 'disabled'}>Add</button>`}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  $('back').addEventListener('click', () => { $('menuView').style.display = 'none'; $('shopsView').style.display = ''; });
+
+  $('menu').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-add]');
+    if (!b) return;
+    const item = items.find(i => i._id === b.dataset.add);
+    if (!item.optionGroups || !item.optionGroups.length) return addToCart(item, 1, {});
+    pending = item;
+    $('optTitle').textContent = item.name;
+    $('optBody').innerHTML = item.optionGroups.map((g, gi) =>
+      `<label class="f">${JD.esc(g.groupName)}</label><select data-group="${gi}">${g.choices.map(c => `<option>${JD.esc(c)}</option>`).join('')}</select>`).join('') +
+      '<label class="f">Quantity</label><input type="number" id="optQty" min="1" max="99" value="1">';
+    $('optModal').classList.add('show');
+  });
+
+  $('optAdd').addEventListener('click', () => {
+    const options = {};
+    pending.optionGroups.forEach((g, gi) => { options[g.groupName] = document.querySelector(`[data-group="${gi}"]`).value; });
+    addToCart(pending, Math.max(1, parseInt($('optQty').value, 10) || 1), options);
+    $('optModal').classList.remove('show');
+  });
+
+  document.addEventListener('click', (e) => { if (e.target.matches('[data-close]') || e.target.classList.contains('modal-back')) e.target.closest('.modal-back').classList.remove('show'); });
+
+  // ---- cart ----
+  function addToCart(item, qty, options) {
+    const key = item._id + JSON.stringify(options);
+    const ex = cart.find(c => c.key === key);
+    if (ex) ex.qty += qty; else cart.push({ item, qty, options, key });
+    drawCart();
+    JD.toast(item.name + ' added');
+  }
+
+  const subtotal = () => cart.reduce((s, c) => s + c.item.price * c.qty, 0);
+
+  function drawCart() {
+    const n = cart.reduce((s, c) => s + c.qty, 0);
+    $('cartBar').classList.toggle('show', n > 0);
+    $('cartText').textContent = `🛒 ${n} item${n === 1 ? '' : 's'} · ${JD.money(subtotal())}`;
+  }
+
+  // ---- checkout ----
+  $('checkoutBtn').addEventListener('click', async () => {
+    drawCheckoutItems();
+    $('coMsg').innerHTML = '';
+    $('coModal').classList.add('show');
+    try {
+      const [acct, ref] = await Promise.all([
+        $('coAddr').value ? null : JD.api('/api/account/me').catch(() => null),
+        referral ? referral : JD.api('/api/account/referral').catch(() => null)
+      ]);
+      if (acct && acct.user && acct.user.address) $('coAddr').value = acct.user.address;
+      referral = ref;
+      $('coCreditAmt').textContent = ref && ref.referralCredit > 0 ? `(${JD.money(ref.referralCredit)} available)` : '(none available)';
+      $('coCredit').disabled = !(ref && ref.referralCredit > 0);
+    } catch (e) {}
+    refreshTotals();
+  });
+
+  function drawCheckoutItems() {
+    $('coItems').innerHTML = cart.map((c, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee">
+        <div><b>${JD.esc(c.item.name)}</b>${Object.keys(c.options).length ? `<div class="tile-meta">${Object.values(c.options).map(JD.esc).join(', ')}</div>` : ''}</div>
+        <div class="qty"><button data-q="${i}" data-d="-1">−</button>${c.qty}<button data-q="${i}" data-d="1">+</button></div>
+        <b>${JD.money(c.item.price * c.qty)}</b>
+      </div>`).join('');
+  }
+
+  $('coItems').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-q]');
+    if (!b) return;
+    const c = cart[+b.dataset.q];
+    c.qty += +b.dataset.d;
+    if (c.qty < 1) cart.splice(+b.dataset.q, 1);
+    drawCart();
+    if (!cart.length) return $('coModal').classList.remove('show');
+    drawCheckoutItems(); refreshTotals();
+  });
+
+  async function refreshTotals() {
+    const addr = $('coAddr').value.trim();
+    quote = null;
+    if (addr && currentShop) {
+      try { quote = await JD.api('/api/orders/quote', { method: 'POST', body: { merchantEmail: currentShop.merchantEmail, dropoff: addr } }); } catch (e) {}
+    }
+    const sub = subtotal();
+    const disc = referral && referral.firstOrderDiscountEligible ? Math.round(sub * 0.10 * 100) / 100 : 0;
+    const credit = $('coCredit').checked && referral ? Math.min(referral.referralCredit || 0, Math.max(0, sub - disc)) : 0;
+    const fee = quote ? quote.deliveryFee : 0;
+    const tip = Math.max(0, parseFloat($('coTip').value) || 0);
+    $('coTotals').innerHTML = `
+      <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${JD.money(sub)}</span></div>
+      ${disc ? `<div style="display:flex;justify-content:space-between;color:#047857"><span>First-order discount</span><span>−${JD.money(disc)}</span></div>` : ''}
+      ${credit ? `<div style="display:flex;justify-content:space-between;color:#047857"><span>Referral credit</span><span>−${JD.money(credit)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between"><span>Delivery ${quote && quote.estimated ? '(estimated)' : ''}</span><span>${quote ? JD.money(fee) : 'enter address'}</span></div>
+      ${tip ? `<div style="display:flex;justify-content:space-between"><span>Tip</span><span>${JD.money(tip)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;margin-top:6px"><span>Total</span><span>${JD.money(sub - disc - credit + fee + tip)}</span></div>`;
+  }
+
+  $('coAddr').addEventListener('change', refreshTotals);
+  $('coTip').addEventListener('input', refreshTotals);
+  $('coCredit').addEventListener('change', refreshTotals);
+  $('coPay').addEventListener('change', () => { $('coPhoneWrap').style.display = ['EcoCash', 'OneMoney'].includes($('coPay').value) ? '' : 'none'; });
+
+  $('coPlace').addEventListener('click', async () => {
+    const dropoff = $('coAddr').value.trim();
+    const method = $('coPay').value;
+    const phone = $('coPhone').value.trim();
+    if (!dropoff) return JD.toast('Enter a delivery address');
+    if (['EcoCash', 'OneMoney'].includes(method) && !phone) return JD.toast('Enter your mobile money number');
+
+    $('coPlace').disabled = true;
+    try {
+      const res = await JD.api('/api/orders', { method: 'POST', body: {
+        pickup: currentShop.shopName,
+        dropoff,
+        item: cart.map(c => `${c.qty}× ${c.item.name}`).join(', '),
+        paymentMethod: method,
+        mobileNumber: phone || undefined,
+        tip: parseFloat($('coTip').value) || 0,
+        useCredit: $('coCredit').checked,
+        lineItems: cart.map(c => ({ catalogItemId: c.item._id, quantity: c.qty, selectedOptions: c.options }))
+      } });
+      const o = res.order || {};
+      cart = []; drawCart(); referral = null;
+      $('coItems').innerHTML = '';
+      $('coTotals').innerHTML = '';
+      $('coMsg').innerHTML = `<div class="notice" style="background:#d1fae5;color:#047857">✅ Order placed! ${o.paynowInstructions ? JD.esc(o.paynowInstructions) : 'A driver will be assigned shortly.'}</div>
+        <a class="btn" href="/orders.html">View my orders</a>`;
+      $('coPlace').style.display = 'none';
+    } catch (e) {
+      $('coMsg').innerHTML = `<div class="error-box">${JD.esc(e.message)}</div>`;
+      $('coPlace').disabled = false;
+    }
+  });
+
+  loadShops();
+});
+
+</script>
+</body>
+</html>
