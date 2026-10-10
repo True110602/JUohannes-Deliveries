@@ -30,14 +30,29 @@ function jdBuildMenuItems(session) {
       link('/forgot-password.html', '❓', 'Forgot password');
   }
 
-  const dash = { admin: 'admin.html', merchant: 'merchant.html', driver: 'driver.html', customer: 'customer.html' };
-  let html = `<li class="menu-section-title">Main</li>` +
-    link('/' + (dash[session.role] || 'customer.html'), '📊', 'Dashboard');
-  if (session.role === 'merchant' || session.role === 'admin') {
-    html += link('/spreadsheet-import.html', '📥', 'Bulk Import');
-  }
-  html += `<li class="menu-section-title">Account</li>` + link('/account.html', '⚙️', 'Settings');
-  return html;
+  const menus = {
+    customer: [
+      ['Main', [['customer.html', '🏠', 'Home'], ['orders.html', '📦', 'Orders'], ['restaurants.html', '🍽️', 'Restaurants'], ['restaurants.html?favorites=1', '❤️', 'Favorites']]],
+      ['Account', [['wallet.html', '💳', 'Wallet'], ['account.html', '⚙️', 'Settings']]]
+    ],
+    merchant: [
+      ['Main', [['merchant.html', '📊', 'Dashboard'], ['products.html', '🍽️', 'Products'], ['spreadsheet-import.html', '📤', 'Bulk Import'], ['merchant-orders.html', '📦', 'Orders'], ['reports.html', '📈', 'Reports']]],
+      ['Account', [['account.html', '⚙️', 'Settings']]]
+    ],
+    driver: [
+      ['Main', [['driver.html', '🗺️', 'Live Map'], ['driver-orders.html', '📦', 'Active Orders'], ['driver-orders.html?tab=available', '📋', 'Available Orders'], ['driver-orders.html?tab=history', '📈', 'History'], ['driver-earnings.html', '💰', 'Earnings']]],
+      ['Account', [['account.html', '⚙️', 'Settings']]]
+    ],
+    admin: [
+      ['Main', [['admin.html', '📊', 'Dashboard']]],
+      ['Management', [['admin-users.html', '👥', 'Users'], ['admin-merchants.html', '🏪', 'Merchants'], ['admin-drivers.html', '🚗', 'Drivers'], ['admin-orders.html', '📦', 'Orders']]],
+      ['Analytics', [['admin-reports.html', '📈', 'Reports'], ['admin-logs.html', '📋', 'Logs']]],
+      ['Account', [['account.html', '⚙️', 'Settings']]]
+    ]
+  };
+  return (menus[session.role] || menus.customer).map(([title, links]) =>
+    `<li class="menu-section-title">${title}</li>` + links.map(([h, i, l]) => link('/' + h, i, l)).join('')
+  ).join('');
 }
 
 function jdInjectMenu() {
@@ -151,19 +166,21 @@ class HamburgerMenu {
   }
 
   setActiveMenu() {
-    const currentPage = window.location.pathname.split('/').pop() || 'index.html';
-    
-    this.menuLinks.forEach(link => {
-      const href = link.getAttribute('href');
-      if (href === currentPage || href === '/' + currentPage) {
+    const page = window.location.pathname.split('/').pop() || 'index.html';
+    const full = page + window.location.search;
+    const norm = (h) => (h || '').replace(/^\//, '');
+    const links = [...this.menuLinks];
+
+    // Prefer an exact match including the query string (Favorites vs Restaurants),
+    // then fall back to a match on the page alone.
+    let matched = links.filter(l => norm(l.getAttribute('href')) === full);
+    if (!matched.length) matched = links.filter(l => { const h = norm(l.getAttribute('href')); return h === page || (h.split('?')[0] === page && !h.includes('?')); });
+
+    links.forEach(link => {
+      if (matched.includes(link)) {
         link.classList.add('active');
-        
-        // Activate parent submenu if exists
-        const parent = link.closest('.menu-item');
-        const parentSubmenu = parent?.querySelector('.submenu');
-        if (parentSubmenu) {
-          parentSubmenu.classList.add('active');
-        }
+        const parentSubmenu = link.closest('.menu-item')?.querySelector('.submenu');
+        if (parentSubmenu) parentSubmenu.classList.add('active');
       } else {
         link.classList.remove('active');
       }
