@@ -113,4 +113,43 @@ router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
+// PATCH edit an item - merchant only, and only their own
+router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
+    }
+
+    const { name, price, description, imageUrl, optionGroups } = req.body;
+    if (name !== undefined) item.name = name;
+    if (price !== undefined) item.price = price;
+    if (description !== undefined) item.description = description;
+    if (imageUrl !== undefined) item.imageUrl = imageUrl;
+    if (optionGroups !== undefined) item.optionGroups = optionGroups;
+
+    await item.save();
+    res.json(item);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// DELETE an item - merchant only, and only their own. Past orders keep
+// their own copy of the name/price (lineItems), so history is unaffected.
+router.delete('/:id', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
+    }
+    await item.deleteOne();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
