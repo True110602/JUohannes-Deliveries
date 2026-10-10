@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Orders 📦</h1>
+  <p class="page-sub">Orders that include items from your shop.</p>
+  <div id="tabs"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const me = JD.guard('merchant');
+  if (!me) return;
+  const GROUPS = {
+    pending: ['pending'],
+    progress: ['assigned', 'picked_up'],
+    delivered: ['delivered'],
+    closed: ['cancelled', 'failed']
+  };
+  let orders = [];
+  let tab = GROUPS[JD.param('tab')] || JD.param('tab') === 'all' ? JD.param('tab') : 'pending';
+
+  const tabsUi = JD.tabs(document.getElementById('tabs'), [
+    { id: 'pending', label: 'New' }, { id: 'progress', label: 'In progress' }, { id: 'delivered', label: 'Delivered' }, { id: 'closed', label: 'Cancelled / failed' }, { id: 'all', label: 'All' }
+  ], tab, (id) => { tab = id; draw(); });
+
+  const mine = (o) => (o.lineItems || []).filter(l => l.merchantEmail === me.email);
+
+  function draw() {
+    const rows = tab === 'all' ? orders : orders.filter(o => GROUPS[tab].includes(o.status));
+    const el = document.getElementById('list');
+    if (!rows.length) { el.innerHTML = JD.empty('📦', 'No orders here.'); return; }
+    el.innerHTML = rows.map(o => {
+      const lines = mine(o);
+      const share = lines.reduce((s, l) => s + l.price * l.quantity, 0);
+      return `<div class="order-card">
+        <div class="order-head">
+          <div><div class="order-title">${JD.esc(o.customerName || 'Customer')}</div><div class="order-meta">${JD.date(o.createdAt, true)} · #${JD.esc(String(o._id).slice(-6))}</div></div>
+          <div style="text-align:right"><div class="order-price">${JD.money(share)}</div>${JD.badge(o.status)}</div>
+        </div>
+        <div class="order-body">
+          ${lines.map(l => `<div>🍴 ${l.quantity}× ${JD.esc(l.name)}${Object.keys(l.selectedOptions || {}).length ? ' <span class="tile-meta">(' + Object.entries(l.selectedOptions).map(([k, v]) => JD.esc(k) + ': ' + JD.esc(v)).join(', ') + ')</span>' : ''} — ${JD.money(l.price * l.quantity)}</div>`).join('')}
+          <div>📍 ${JD.esc(o.dropoff)}</div>
+          <div>🚗 ${o.assignedDriver ? JD.esc(o.assignedDriver) : 'No driver assigned yet'}</div>
+          ${o.shopRating ? `<div>⭐ ${'⭐'.repeat(o.shopRating)}${o.ratingComment ? ' — “' + JD.esc(o.ratingComment) + '”' : ''}</div>` : ''}
+        </div></div>`;
+    }).join('');
+  }
+
+  try {
+    orders = await JD.api('/api/merchant/orders');
+    const c = {};
+    Object.keys(GROUPS).forEach(k => { c[k] = orders.filter(o => GROUPS[k].includes(o.status)).length; });
+    c.all = orders.length;
+    tabsUi.counts(c);
+    draw();
+  } catch (e) { JD.fail(e, document.getElementById('list')); }
+});
+
+</script>
+</body>
+</html>
