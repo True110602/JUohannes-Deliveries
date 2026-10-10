@@ -498,3 +498,9 @@ body.has-auto-menu {
   padding-top: 70px;
   box-sizing: border-box;
 }
+
+/* Section pages already offset their content below the navbar via .main-content,
+   so don't add the body padding on top of it. */
+body.has-auto-menu:has(> .main-content) {
+  padding-top: 0;
+}
