@@ -23,7 +23,12 @@ router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
     const { shopName, profilePicUrl, bankName, accountName, accountNumber, shopLat, shopLng, isOpen } = req.body;
     const update = {};
     if (shopName !== undefined) update.shopName = shopName;
-    if (profilePicUrl !== undefined) update.profilePicUrl = profilePicUrl;
+    if (profilePicUrl !== undefined) {
+      if (typeof profilePicUrl !== 'string' || (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/)/i.test(profilePicUrl))) {
+        return res.status(400).json({ success: false, message: 'Profile picture must be an uploaded image or an http(s) link.' });
+      }
+      update.profilePicUrl = profilePicUrl;
+    }
     if (bankName !== undefined || accountName !== undefined || accountNumber !== undefined) {
       update.bankDetails = { bankName, accountName, accountNumber };
     }
@@ -87,50 +92,47 @@ router.get('/orders', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
-// Sales stats - uses structured lineItems where available (accurate: the
-// merchant's real share after driver + platform commission), and falls
-// back to the old item-name text-matching for orders placed before
-// lineItems existed, so historical figures don't just disappear.
+// Sales stats. The merchant's take-home for an order is the item subtotal
+// (`amount`) minus the platform's commission. The driver is NOT paid out of
+// `amount`: the driver earns the delivery fee + tip, which the customer pays
+// on top of the item subtotal - so driverCommission must not be deducted
+// for orders placed with the current pricing model.
+//
+// Orders placed before structured lineItems existed are still matched by
+// item name (the old heuristic) and keep their old calculation, where the
+// driver's 10% cut did come out of the order amount, so historical figures
+// don't change.
 router.get('/stats', ...requireRole('merchant'), async (req, res) => {
   try {
-    const deliveredOrders = await Order.find({ status: 'delivered' });
+    // Only load this merchant's own delivered orders, instead of every
+    // delivered order on the platform.
+    const structuredOrders = await Order.find({
+      status: 'delivered',
+      'lineItems.merchantEmail': req.user.email
+    }).select('amount platformCommission');
 
-    let salesCount = 0;
-    let totalRevenue = 0;
+    let salesCount = structuredOrders.length;
+    let totalRevenue = structuredOrders.reduce(
+      (sum, o) => sum + (o.amount || 0) - (o.platformCommission || 0), 0
+    );
 
-    if (deliveredOrders.some(o => o.lineItems && o.lineItems.length > 0)) {
-      // At least some orders have structured data - use it for those,
-      // and keep the old heuristic only for orders that predate it.
-      const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
-      const myItemNames = myItems.map(i => i.name);
+    // Legacy orders (no lineItems at all) - match by item name as before.
+    const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
+    const myItemNames = myItems.map(i => i.name).filter(Boolean);
+    if (myItemNames.length) {
+      const legacyOrders = await Order.find({
+        status: 'delivered',
+        'lineItems.0': { $exists: false }
+      }).select('item amount driverCommission platformCommission');
 
-      deliveredOrders.forEach(o => {
-        const hasStructuredData = o.lineItems && o.lineItems.length > 0;
-        const isMine = hasStructuredData
-          ? o.lineItems.some(li => li.merchantEmail === req.user.email)
-          : myItemNames.some(name => (o.item || '').includes(name));
-
-        if (!isMine) return;
-
+      legacyOrders.forEach(o => {
+        if (!myItemNames.some(name => (o.item || '').includes(name))) return;
         salesCount++;
-        // Merchant's actual take-home: order total minus driver and
-        // platform commission (both already computed at order time).
-        // Older orders have platformCommission = 0 since that field
-        // didn't exist yet, so this degrades gracefully rather than
-        // breaking historical numbers.
         totalRevenue += (o.amount || 0) - (o.driverCommission || 0) - (o.platformCommission || 0);
       });
-    } else {
-      // No orders anywhere have structured data yet (fresh install or
-      // fully historical dataset) - original approximate behavior.
-      const myItems = await CatalogItem.find({ merchantEmail: req.user.email }).select('name');
-      const myItemNames = myItems.map(i => i.name);
-      const myOrders = deliveredOrders.filter(o => myItemNames.some(name => (o.item || '').includes(name)));
-      salesCount = myOrders.length;
-      totalRevenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
     }
 
-    res.json({ success: true, salesCount, totalRevenue });
+    res.json({ success: true, salesCount, totalRevenue: Math.round(totalRevenue * 100) / 100 });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
