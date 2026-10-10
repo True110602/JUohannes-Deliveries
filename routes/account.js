@@ -28,7 +28,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
     // Unlike name/phone/address, an empty string here is a valid, meaningful
     // update - it's how "remove my profile picture" would work - so it's
     // not filtered out the same way a blank name would be.
-    if (typeof profilePicUrl === 'string') update.profilePicUrl = profilePicUrl;
+    if (typeof profilePicUrl === 'string') {
+      // Only our own uploads or a normal web link - blocks javascript:/data: URLs.
+      if (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/)/i.test(profilePicUrl)) {
+        return res.status(400).json({ success: false, message: 'Profile picture must be an uploaded image or an http(s) link.' });
+      }
+      update.profilePicUrl = profilePicUrl;
+    }
 
     const user = await User.findByIdAndUpdate(req.user.id, update, { new: true })
       .select('name email phone address role profilePicUrl');
