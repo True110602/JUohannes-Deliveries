@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drivers - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Drivers 🚗</h1>
+  <p class="page-sub">Your delivery fleet and who’s online right now.</p>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card"><div id="list"><div class="empty">Loading…</div></div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('admin')) return;
+  try {
+    const [drivers, loc, orders] = await Promise.all([
+      JD.api('/api/admin/users?role=driver'),
+      JD.api('/api/admin/drivers-locations').catch(() => ({ drivers: [] })),
+      JD.api('/api/orders').catch(() => [])
+    ]);
+    const seen = new Map((loc.drivers || []).map(d => [String(d.driverId), d]));
+    const FIVE = 5 * 60 * 1000;
+    const info = (d) => seen.get(d.email) || seen.get(String(d._id));
+    const online = (d) => { const l = info(d); return l && Date.now() - new Date(l.updatedAt) < FIVE; };
+    const jobs = (d) => orders.filter(o => o.assignedDriver === d.email);
+
+    document.getElementById('stats').innerHTML =
+      JD.statCard('Drivers', drivers.length) +
+      JD.statCard('Online now', drivers.filter(online).length, 'Location sent in the last 5 min') +
+      JD.statCard('On a delivery', drivers.filter(d => jobs(d).some(o => ['assigned', 'picked_up'].includes(o.status))).length);
+
+    document.getElementById('list').innerHTML = drivers.length ? JD.table([
+      { h: 'Driver', f: d => `<b>${JD.esc(d.name || '—')}</b><div class="tile-meta">${JD.esc(d.email)}</div>` },
+      { h: 'Phone', f: d => d.phone ? `<a href="tel:${JD.esc(d.phone)}">${JD.esc(d.phone)}</a>` : '—' },
+      { h: 'Status', f: d => online(d) ? '<span class="badge ok">Online</span>' : '<span class="badge">Offline</span>' },
+      { h: 'Last seen', f: d => info(d) ? JD.date(info(d).updatedAt, true) : 'Never' },
+      { h: 'Active jobs', f: d => jobs(d).filter(o => ['assigned', 'picked_up'].includes(o.status)).length },
+      { h: 'Delivered', f: d => jobs(d).filter(o => o.status === 'delivered').length },
+      { h: 'Rating', f: d => { const r = jobs(d).filter(o => o.driverRating); return r.length ? (r.reduce((s, o) => s + o.driverRating, 0) / r.length).toFixed(1) + ' ⭐' : '—'; } }
+    ], drivers) : JD.empty('🚗', 'No drivers have registered yet.');
+  } catch (e) { JD.fail(e, document.getElementById('list')); }
+});
+
+</script>
+</body>
+</html>
