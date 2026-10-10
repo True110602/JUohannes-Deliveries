@@ -30,6 +30,10 @@ const { notifyUser, notifyRole } = require('./utils/notify');
 const { broadcastOrders } = require('./utils/realtime');
 
 const app = express();
+// The app runs behind a reverse proxy on Render. Without this, every
+// request appears to come from the proxy's IP, so the rate limiters below
+// would count ALL users as one client (e.g. 10 logins per 15 min in total).
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // --- SOCKET.IO ---
@@ -86,6 +90,15 @@ const generalApiLimiter = rateLimit({
 });
 app.use('/api/', generalApiLimiter);
 app.use(express.urlencoded({ extended: true }));
+// SECURITY: /uploads may only ever serve image files, and never as an
+// active document. This also neutralises any non-image file that was
+// uploaded before the upload filter was tightened.
+app.use('/uploads', (req, res, next) => {
+  if (!/\.(jpe?g|png|webp|gif)$/i.test(req.path)) return res.status(404).end();
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- MONGOOSE DATABASE SETUP ---
@@ -489,22 +502,30 @@ app.use('/api/driver', driverStatsRoutes);
 // Paynow calls this directly when a payment's status changes - no auth,
 // since it's Paynow's server calling it, not a logged-in browser.
 app.post('/api/payments/paynow-result', async (req, res) => {
+  // SECURITY: nothing in this request body is trusted. Anyone can POST to
+  // this URL, so we only use it as a "something changed" signal and ask
+  // Paynow itself (via the order's poll URL) what the real status is.
   try {
-    const { reference, status } = req.body;
-    const match = /^Order-([a-f0-9]+)$/.exec(reference || '');
+    const { reference } = req.body || {};
+    const match = /^Order-([a-f0-9]{24})$/.exec(typeof reference === 'string' ? reference : '');
 
-    if (match) {
+    if (match && paynow) {
       const order = await Order.findById(match[1]);
-      if (order) {
-        order.paymentStatus = (status || '').toLowerCase() || order.paymentStatus;
-        await order.save();
-        await broadcastOrders(io, order);
+      if (order && order.paynowPollUrl) {
+        const polled = await paynow.pollTransaction(order.paynowPollUrl);
+        const newStatus = polled.paid() ? 'paid' : String(polled.status || '').toLowerCase();
+        if (newStatus && newStatus !== order.paymentStatus) {
+          order.paymentStatus = newStatus;
+          await order.save();
+          await broadcastOrders(io, order);
+        }
       }
     }
-    res.sendStatus(200);
   } catch (err) {
-    res.sendStatus(200);
+    console.error('Paynow result handler error:', err.message || err);
   }
+  // Always 200 so Paynow doesn't keep retrying.
+  res.sendStatus(200);
 });
 
 // ==========================================
