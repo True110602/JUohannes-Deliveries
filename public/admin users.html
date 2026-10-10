@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Users 👥</h1>
+  <p class="page-sub">Every account on the platform.</p>
+  <div class="toolbar">
+    <input type="search" id="search" class="grow" placeholder="Search name, email or phone…">
+    <select id="role"><option value="">All roles</option><option value="customer">Customers</option><option value="merchant">Merchants</option><option value="driver">Drivers</option><option value="admin">Admins</option></select>
+  </div>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card"><div id="list"><div class="empty">Loading…</div></div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('admin')) return;
+  const $ = (id) => document.getElementById(id);
+  let users = [];
+
+  function draw() {
+    const q = $('search').value.trim().toLowerCase();
+    const role = $('role').value;
+    const rows = users.filter(u => (!role || u.role === role) &&
+      [u.name, u.email, u.phone, u.shopName].some(v => (v || '').toLowerCase().includes(q)));
+    $('list').innerHTML = rows.length ? JD.table([
+      { h: 'Name', f: u => `<b>${JD.esc(u.name || '—')}</b>${u.shopName ? `<div class="tile-meta">🏪 ${JD.esc(u.shopName)}</div>` : ''}` },
+      { h: 'Email', f: u => JD.esc(u.email) },
+      { h: 'Phone', f: u => JD.esc(u.phone || '—') },
+      { h: 'Role', f: u => `<span class="badge ${u.role === 'admin' ? 'assigned' : ''}">${JD.esc(u.role)}</span>` },
+      { h: 'Status', f: u => u.role === 'merchant' ? (u.approved ? '<span class="badge ok">Approved</span>' : '<span class="badge pending">Awaiting approval</span>') : '<span class="badge ok">Active</span>' },
+      { h: 'Joined', f: u => JD.date(u.createdAt) }
+    ], rows) : JD.empty('👥', 'No users match.');
+  }
+
+  try {
+    users = await JD.api('/api/admin/users');
+    const n = (r) => users.filter(u => u.role === r).length;
+    $('stats').innerHTML = JD.statCard('Total', users.length) + JD.statCard('Customers', n('customer')) + JD.statCard('Merchants', n('merchant')) + JD.statCard('Drivers', n('driver'));
+    draw();
+  } catch (e) { JD.fail(e, $('list')); }
+  $('search').addEventListener('input', draw);
+  $('role').addEventListener('change', draw);
+});
+
+</script>
+</body>
+</html>
