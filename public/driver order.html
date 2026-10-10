@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Driver Orders - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">My Deliveries 🚗</h1>
+  <p class="page-sub">Accept new jobs, update deliveries as you go, and look back at past ones.</p>
+  <div id="tabs"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('driver')) return;
+  let orders = [];
+  let tab = ['active', 'available', 'history'].includes(JD.param('tab')) ? JD.param('tab') : 'active';
+
+  // available = assigned to me but I haven't accepted yet; active = accepted and not finished
+  const isAvailable = (o) => o.status === 'assigned' && o.driverAccepted === null;
+  const isActive = (o) => (o.status === 'assigned' && o.driverAccepted === true) || o.status === 'picked_up';
+  const isHistory = (o) => ['delivered', 'failed', 'cancelled'].includes(o.status);
+
+  const tabsUi = JD.tabs(document.getElementById('tabs'),
+    [{ id: 'active', label: 'Active' }, { id: 'available', label: 'Available' }, { id: 'history', label: 'History' }],
+    tab, (id) => { tab = id; draw(); });
+
+  const items = (o) => o.lineItems && o.lineItems.length ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}`).join(', ') : JD.esc(o.item || 'Order');
+
+  function card(o) {
+    const earn = o.driverCommission || 0;
+    return `<div class="order-card" data-id="${o._id}">
+      <div class="order-head">
+        <div><div class="order-title">${JD.esc(o.customerName || 'Customer')}</div><div class="order-meta">${JD.date(o.createdAt, true)} · #${JD.esc(String(o._id).slice(-6))}</div></div>
+        <div style="text-align:right"><div class="order-price">${JD.money(earn)}</div><div class="tile-meta">you earn</div>${JD.badge(o.status)}</div>
+      </div>
+      <div class="order-body">
+        <div>🏪 Pick up: ${JD.esc(o.pickup)}</div>
+        <div>📍 Drop off: ${JD.esc(o.dropoff)}${o.distanceKm ? ` <span class="tile-meta">(${Number(o.distanceKm).toFixed(1)} km)</span>` : ''}</div>
+        <div>🛒 ${items(o)}</div>
+        <div>💳 ${JD.esc(o.paymentMethod || 'Cash')}${o.paymentMethod === 'Cash' ? ` — collect <b>${JD.money((o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0))}</b>` : ''}</div>
+        ${o.customerPhone ? `<div>📞 <a href="tel:${JD.esc(o.customerPhone)}">${JD.esc(o.customerPhone)}</a></div>` : ''}
+      </div>
+      ${actions(o)}
+    </div>`;
+  }
+
+  function actions(o) {
+    if (isAvailable(o)) return `<div class="btn-row"><button class="btn btn-success btn-sm" data-accept="1">✅ Accept</button><button class="btn btn-danger btn-sm" data-accept="0">Decline</button></div>`;
+    if (o.status === 'assigned' && o.driverAccepted === true) return `<div class="btn-row" style="align-items:center"><input type="file" accept="image/*" capture="environment" data-photo style="width:auto;max-width:220px"><button class="btn btn-sm" data-status="picked_up">📦 Mark picked up</button><button class="btn btn-sm btn-secondary" data-status="failed">Can’t complete</button></div>`;
+    if (o.status === 'picked_up') return `<div class="btn-row" style="align-items:center"><input type="file" accept="image/*" capture="environment" data-photo style="width:auto;max-width:220px"><button class="btn btn-sm btn-success" data-status="delivered">✅ Mark delivered</button><button class="btn btn-sm btn-secondary" data-status="failed">Can’t complete</button></div>`;
+    return '';
+  }
+
+  function draw() {
+    const rows = orders.filter(tab === 'active' ? isActive : tab === 'available' ? isAvailable : isHistory);
+    const el = document.getElementById('list');
+    if (!rows.length) {
+      el.innerHTML = tab === 'active' ? JD.empty('🚗', 'No active deliveries right now.')
+        : tab === 'available' ? JD.empty('📋', 'No new jobs waiting for your response.')
+        : JD.empty('📈', 'Completed deliveries will appear here.');
+      return;
+    }
+    el.innerHTML = rows.map(card).join('');
+  }
+
+  async function load() {
+    try {
+      orders = await JD.api('/api/orders/mine');
+      tabsUi.counts({ active: orders.filter(isActive).length, available: orders.filter(isAvailable).length, history: orders.filter(isHistory).length });
+      draw();
+    } catch (e) { JD.fail(e, document.getElementById('list')); }
+  }
+
+  document.getElementById('list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-accept],[data-status]');
+    if (!btn) return;
+    const id = btn.closest('[data-id]').dataset.id;
+    btn.disabled = true;
+    try {
+      if (btn.dataset.accept !== undefined) {
+        await JD.api(`/api/orders/${id}/respond`, { method: 'PATCH', body: { accepted: btn.dataset.accept === '1' } });
+        JD.toast(btn.dataset.accept === '1' ? 'Order accepted' : 'Order declined');
+        if (btn.dataset.accept === '1') { tab = 'active'; tabsUi.set('active'); }
+      } else {
+        const status = btn.dataset.status;
+        if (status === 'failed' && !confirm('Mark this delivery as failed?')) { btn.disabled = false; return; }
+        const photo = btn.closest('.order-card').querySelector('[data-photo]')?.files[0];
+        if (photo && status !== 'failed') {
+          const fd = new FormData(); fd.append('status', status); fd.append('photo', photo);
+          await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', form: fd });
+        } else {
+          await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', body: { status } });
+        }
+        JD.toast('Updated');
+      }
+      await load();
+    } catch (err) { JD.toast(err.message); btn.disabled = false; }
+  });
+
+  load();
+});
+
+</script>
+</body>
+</html>
