@@ -21,10 +21,21 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
+// SECURITY: the saved file's extension comes from the validated MIME type,
+// never from the client-supplied filename. Otherwise someone could upload
+// "evil.html" labelled as image/png and have it served from this origin
+// as a web page (stored XSS with access to the logged-in user's token).
+const MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif'
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const ext = MIME_TO_EXT[file.mimetype] || '.jpg';
     const uniqueName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
     cb(null, uniqueName);
   }
