@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); // switched from native bcrypt - pure JS, no compile step that can fail on deploy
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { Paynow } = require('paynow');
 const path = require('path');
 const helmet = require('helmet');
@@ -151,34 +151,18 @@ mongoose.connection.once('open', () => {
   }
 });
 
-// --- NODEMAILER (password reset emails) ---
-const EMAIL_CONFIGURED = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
-const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+// --- RESEND (password reset emails) ---
+// Set RESEND_API_KEY on Render (Environment tab). EMAIL_FROM must be an address
+// on a domain you've verified in Resend; until then the Resend test sender
+// only delivers to the email address your Resend account was created with.
+const EMAIL_CONFIGURED = !!process.env.RESEND_API_KEY;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Johannes Deliveries <onboarding@resend.dev>';
+const resend = EMAIL_CONFIGURED ? new Resend(process.env.RESEND_API_KEY) : null;
 
 if (!EMAIL_CONFIGURED) {
-  console.warn('EMAIL_USER / EMAIL_PASS not set - password reset emails cannot be sent.');
+  console.warn('RESEND_API_KEY not set - password reset emails cannot be sent.');
 } else {
-  // Verify the SMTP credentials at boot so a bad password/app-password shows
-  // up clearly in the server logs right away, instead of only failing (with
-  // a generic message) the first time a user actually requests a reset.
-  transporter.verify()
-    .then(() => console.log('\u2705 Email transporter ready - password reset emails can be sent'))
-    .catch((err) => {
-      console.error('------------------------------------------------------------');
-      console.error('\u274c Email transporter verification failed:', err.message);
-      if ((process.env.EMAIL_SERVICE || 'gmail') === 'gmail') {
-        console.error('If using Gmail: EMAIL_PASS must be a 16-character Google "App');
-        console.error('Password" (Google Account -> Security -> 2-Step Verification ->');
-        console.error('App passwords). A normal Gmail account password will be rejected.');
-      }
-      console.error('------------------------------------------------------------');
-    });
+  console.log('\u2705 Resend configured - password reset emails can be sent');
 }
 
 // --- PAYNOW (EcoCash payments) ---
@@ -193,7 +177,8 @@ if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
   console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 app.set('paynow', paynow);
-app.set('transporter', transporter);
+app.set('resend', resend);
+app.set('emailFrom', EMAIL_FROM);
 app.set('emailConfigured', EMAIL_CONFIGURED);
 
 // Generates a short, human-shareable referral code (e.g. "BHEKI4821") and
@@ -427,19 +412,20 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
       user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
       await user.save();
 
-      await transporter.sendMail({
-        from: `"Johannes Deliveries" <${process.env.EMAIL_USER}>`,
+      // The Resend SDK returns { data, error } instead of throwing
+      const { error } = await resend.emails.send({
+        from: EMAIL_FROM,
         to: email,
         subject: 'Password Reset Verification Code - Johannes Deliveries',
         text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
       });
+      if (error) throw new Error(error.message || JSON.stringify(error));
     }
 
     res.json({ success: true, message: 'If that email is registered, a verification code has been sent.' });
   } catch (err) {
-    // Log the actual nodemailer error (e.g. "Invalid login") server-side -
-    // this is almost always a rejected/missing Gmail App Password, not a
-    // code bug, so the real reason only shows up here, in the Render logs.
+    // Log the actual Resend error server-side (e.g. invalid API key or an
+    // unverified sender domain) - it only shows up here, in the Render logs.
     console.error('Password Reset Request Error:', err.message || err);
     res.status(500).json({ success: false, message: 'Failed to send reset code. Check the server logs for the exact mail error.' });
   }
