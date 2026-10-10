@@ -89,20 +89,26 @@
       </a>
     </li>
     <li class="menu-item">
-      <a href="#" class="menu-link">
+      <a href="customer.html#mapSection" class="menu-link">
+        <span class="menu-icon">🗺️</span>
+        Track Delivery
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="orders.html" class="menu-link">
         <span class="menu-icon">📦</span>
         Orders
         <span class="menu-badge" id="orderBadge" style="display:none;">0</span>
       </a>
     </li>
     <li class="menu-item">
-      <a href="#" class="menu-link">
+      <a href="restaurants.html" class="menu-link">
         <span class="menu-icon">🍽️</span>
         Restaurants
       </a>
     </li>
     <li class="menu-item">
-      <a href="#" class="menu-link">
+      <a href="restaurants.html?favorites=1" class="menu-link">
         <span class="menu-icon">❤️</span>
         Favorites
       </a>
@@ -110,7 +116,7 @@
 
     <li class="menu-section-title">ACCOUNT</li>
     <li class="menu-item">
-      <a href="#" class="menu-link">
+      <a href="wallet.html" class="menu-link">
         <span class="menu-icon">💳</span>
         Wallet
       </a>
@@ -146,22 +152,22 @@
     <div class="card">
       <div class="card-title">📦 Active Orders</div>
       <div class="card-value" data-stat="activeOrders">0</div>
-      <a href="#" class="btn btn-secondary">View Orders</a>
+      <a href="orders.html" class="btn btn-secondary">View Orders</a>
     </div>
     <div class="card">
       <div class="card-title">💰 Total Spent</div>
       <div class="card-value" data-stat="totalSpent">$0.00</div>
-      <a href="#" class="btn btn-secondary">History</a>
+      <a href="orders.html?tab=history" class="btn btn-secondary">History</a>
     </div>
     <div class="card">
       <div class="card-title">⭐ Your Rating</div>
       <div class="card-value" data-stat="customerRating">4.8</div>
-      <a href="#" class="btn btn-secondary">Reviews</a>
+      <a href="orders.html?tab=reviews" class="btn btn-secondary">Reviews</a>
     </div>
     <div class="card">
       <div class="card-title">📋 Orders</div>
       <div class="card-value" data-stat="totalOrders">0</div>
-      <a href="#" class="btn btn-secondary">All Orders</a>
+      <a href="orders.html" class="btn btn-secondary">All Orders</a>
     </div>
   </div>
 
@@ -169,6 +175,10 @@
   <div class="card map-section" id="mapSection">
     <h2 class="card-title">🚗 Track Your Delivery</h2>
     <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Real-time tracking of your order delivery</p>
+    <div id="noDelivery" style="display:none;background:#f0f4ff;color:#4a5190;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px;">
+      🛵 No delivery in progress right now. When a driver picks up your order you can follow it here live.
+      <a href="/restaurants.html" style="font-weight:700;margin-left:6px;">Order something →</a>
+    </div>
     <div id="map"></div>
   </div>
 
@@ -299,7 +309,13 @@
       if (activeDelivery) {
         displayMapForDelivery(activeDelivery);
       } else {
-        document.getElementById('mapSection').classList.remove('active');
+        // No delivery in progress: keep the map visible anyway (centred on the
+        // customer when the browser allows it) with a short note on top.
+        document.getElementById('mapSection').classList.add('active');
+        document.getElementById('map').style.display = '';
+        document.getElementById('noDelivery').style.display = '';
+        showIdleMap();
+        if (location.hash === '#mapSection') document.getElementById('mapSection').scrollIntoView({ block: 'start' });
       }
 
       // Display recent orders
@@ -328,6 +344,8 @@
 
   function displayMapForDelivery(order) {
     document.getElementById('mapSection').classList.add('active');
+    document.getElementById('map').style.display = '';
+    document.getElementById('noDelivery').style.display = 'none';
 
     if (!map) {
       initMap();
@@ -349,6 +367,20 @@
     } else {
       customerMarker.setLatLng(center);
     }
+  }
+
+  // Idle map: shows the customer's own position when allowed, otherwise the default view.
+  function showIdleMap() {
+    initMap();
+    setTimeout(() => map.invalidateSize(), 100);
+    if (!navigator.geolocation || customerMarker) return;
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const here = [pos.coords.latitude, pos.coords.longitude];
+      map.setView(here, 15);
+      if (driverMarker) { map.removeLayer(driverMarker); driverMarker = null; }
+      customerMarker = L.circleMarker(here, { radius: 8, fillColor: '#4CAF50', color: '#fff', weight: 2, fillOpacity: 0.8 })
+        .bindPopup('📍 You are here').addTo(map);
+    }, () => {}, { timeout: 8000 });
   }
 
   function initMap() {
