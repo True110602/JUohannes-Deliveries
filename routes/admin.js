@@ -19,6 +19,23 @@ router.get('/drivers', ...requireRole('admin'), async (req, res) => {
   }
 });
 
+// Every account (optionally filtered by ?role=), for the admin Users /
+// Drivers pages. Passwords and reset codes are never sent.
+router.get('/users', ...requireRole('admin'), async (req, res) => {
+  try {
+    const filter = {};
+    if (['customer', 'driver', 'merchant', 'admin'].includes(req.query.role)) {
+      filter.role = req.query.role;
+    }
+    const users = await User.find(filter)
+      .select('name email phone role address shopName approved isOpen createdAt')
+      .sort({ createdAt: -1 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // All merchant accounts, so admin can review and approve new ones before
 // they can list items publicly.
 router.get('/merchants', ...requireRole('admin'), async (req, res) => {
@@ -138,10 +155,16 @@ router.get('/stats', ...requireRole('admin'), async (req, res) => {
     
     // Count orders
     const totalOrders = await Order.countDocuments();
-    const completedOrders = await Order.countDocuments({ status: 'completed' });
+    const completedOrders = await Order.countDocuments({ status: 'delivered' });
     const activeOrders = await Order.countDocuments({ 
       status: { $in: ['pending', 'assigned', 'picked_up', 'in_progress'] } 
     });
+
+    // Real revenue: what customers actually paid on delivered orders
+    // (items + delivery fee + tip). Previously this was orders * $45.
+    const delivered = await Order.find({ status: 'delivered' }).select('amount deliveryFee tip');
+    const revenue = delivered.reduce((sum, o) => sum + (o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0), 0);
+    const avgOrderValue = delivered.length ? revenue / delivered.length : 0;
 
     // Calculate success rate
     const successRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
@@ -155,8 +178,8 @@ router.get('/stats', ...requireRole('admin'), async (req, res) => {
       totalMerchants: totalMerchants,
       totalDrivers: totalDrivers,
       onlineDrivers: onlineDrivers,
-      totalRevenue: (totalOrders * 45).toFixed(2), // Average order ~$45
-      avgOrderValue: (totalOrders > 0 ? (totalOrders * 45 / totalOrders).toFixed(2) : '45.00'),
+      totalRevenue: revenue.toFixed(2),
+      avgOrderValue: avgOrderValue.toFixed(2),
       avgRating: 4.8,
       successRate: successRate
     });
