@@ -32,11 +32,11 @@ function jdBuildMenuItems(session) {
 
   const menus = {
     customer: [
-      ['Main', [['customer.html', '🏠', 'Home'], ['orders.html', '📦', 'Orders'], ['restaurants.html', '🍽️', 'Restaurants'], ['restaurants.html?favorites=1', '❤️', 'Favorites']]],
+      ['Main', [['customer.html', '🏠', 'Home'], ['orders.html', '📦', 'Orders'], ['restaurants.html', '🍽️', 'Restaurants'], ['restaurants.html?favorites=1', '❤️', 'Favorites'], ['customer.html#mapSection', '🗺️', 'Track Delivery']]],
       ['Account', [['wallet.html', '💳', 'Wallet'], ['account.html', '⚙️', 'Settings']]]
     ],
     merchant: [
-      ['Main', [['merchant.html', '📊', 'Dashboard'], ['products.html', '🍽️', 'Products'], ['spreadsheet-import.html', '📤', 'Bulk Import'], ['merchant-orders.html', '📦', 'Orders'], ['reports.html', '📈', 'Reports']]],
+      ['Main', [['merchant.html', '📊', 'Dashboard'], ['products.html', '🍽️', 'Products'], ['spreadsheet-import.html', '📤', 'Bulk Import'], ['merchant-orders.html', '📦', 'Orders'], ['reports.html', '📈', 'Reports'], ['shop-location.html', '📍', 'Shop Map']]],
       ['Account', [['account.html', '⚙️', 'Settings']]]
     ],
     driver: [
@@ -44,7 +44,7 @@ function jdBuildMenuItems(session) {
       ['Account', [['account.html', '⚙️', 'Settings']]]
     ],
     admin: [
-      ['Main', [['admin.html', '📊', 'Dashboard']]],
+      ['Main', [['admin.html', '📊', 'Dashboard'], ['admin.html#map', '🗺️', 'Live Map']]],
       ['Management', [['admin-users.html', '👥', 'Users'], ['admin-merchants.html', '🏪', 'Merchants'], ['admin-drivers.html', '🚗', 'Drivers'], ['admin-orders.html', '📦', 'Orders']]],
       ['Analytics', [['admin-reports.html', '📈', 'Reports'], ['admin-logs.html', '📋', 'Logs']]],
       ['Account', [['account.html', '⚙️', 'Settings']]]
@@ -125,9 +125,8 @@ class HamburgerMenu {
     // Close sidebar on mobile when clicking a link
     this.menuLinks.forEach(link => {
       link.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-          this.closeSidebar();
-        }
+        // The sidebar slides over the page at every width, so always close it.
+        this.closeSidebar();
       });
     });
 
