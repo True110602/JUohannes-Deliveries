@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Earnings - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Earnings 💰</h1>
+  <p class="page-sub">What you’ve earned from deliveries — distance-based fees plus 100% of tips.</p>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card"><h2>Last 7 days</h2><div id="chart"></div></div>
+  <div class="card"><h2>Completed deliveries</h2><div id="list"><div class="empty">Loading…</div></div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('driver')) return;
+  try {
+    const orders = await JD.api('/api/orders/mine');
+    const done = orders.filter(o => o.status === 'delivered')
+      .map(o => ({ ...o, when: new Date(o.deliveryPhotoAt || o.updatedAt || o.createdAt) }))
+      .sort((a, b) => b.when - a.when);
+    const earn = (o) => o.driverCommission || 0;
+    const sum = (rows) => rows.reduce((s, o) => s + earn(o), 0);
+
+    const startOf = (daysAgo) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - daysAgo); return d; };
+    const today = done.filter(o => o.when >= startOf(0));
+    const week = done.filter(o => o.when >= startOf(6));
+    const month = done.filter(o => o.when >= startOf(29));
+    const tips = done.reduce((s, o) => s + (o.tip || 0), 0);
+    const km = done.reduce((s, o) => s + (o.distanceKm || 0), 0);
+
+    document.getElementById('stats').innerHTML =
+      JD.statCard('Today', JD.money(sum(today)), today.length + ' deliveries') +
+      JD.statCard('Last 7 days', JD.money(sum(week)), week.length + ' deliveries') +
+      JD.statCard('Last 30 days', JD.money(sum(month)), month.length + ' deliveries') +
+      JD.statCard('All time', JD.money(sum(done)), done.length + ' deliveries') +
+      JD.statCard('Tips', JD.money(tips), 'Yours in full') +
+      JD.statCard('Distance', km.toFixed(1) + ' km', 'Shop to drop-off');
+
+    const days = JD.lastDays(7);
+    const byDay = Object.fromEntries(days.map(d => [d.key, 0]));
+    done.forEach(o => { const k = o.when.toDateString(); if (k in byDay) byDay[k] += earn(o); });
+    document.getElementById('chart').innerHTML = JD.bars(days.map(d => ({ label: d.label, value: byDay[d.key], text: byDay[d.key] ? '$' + byDay[d.key].toFixed(0) : '' })));
+
+    document.getElementById('list').innerHTML = done.length ? JD.table([
+      { h: 'Date', f: o => JD.date(o.when, true) },
+      { h: 'Customer', f: o => JD.esc(o.customerName || '-') },
+      { h: 'Route', f: o => JD.esc(o.pickup) + ' → ' + JD.esc(o.dropoff) },
+      { h: 'Distance', f: o => o.distanceKm ? Number(o.distanceKm).toFixed(1) + ' km' : '-' },
+      { h: 'Fee', f: o => JD.money(o.deliveryFee) },
+      { h: 'Tip', f: o => JD.money(o.tip) },
+      { h: 'Earned', f: o => '<b>' + JD.money(earn(o)) + '</b>' }
+    ], done) : JD.empty('💰', 'Your earnings will show up after your first delivery.');
+  } catch (e) { JD.fail(e, document.getElementById('list')); }
+});
+
+</script>
+</body>
+</html>
