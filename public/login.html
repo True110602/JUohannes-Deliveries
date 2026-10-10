@@ -4,116 +4,204 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - JUohannes Deliveries</title>
-  <link rel="stylesheet" href="/css/theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .login-container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 400px; padding: 40px; }
-    .login-header { text-align: center; margin-bottom: 30px; }
-    .login-logo { font-size: 48px; margin-bottom: 10px; }
-    .login-title { font-size: 28px; font-weight: 700; color: #333; margin-bottom: 5px; }
-    .login-subtitle { font-size: 14px; color: #999; }
-    .form-group { margin-bottom: 20px; }
-    .form-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
-    .form-input { width: 100%; padding: 12px 15px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; transition: all 0.2s; }
-    .form-input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
-    .form-button { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-    .form-button:hover { background: #764ba2; transform: translateY(-1px); }
-    .form-footer { text-align: center; margin-top: 20px; font-size: 13px; color: #666; }
-    .form-footer a { color: #667eea; text-decoration: none; font-weight: 600; }
-    .form-footer a:hover { text-decoration: underline; }
-    .error-message { color: #e74c3c; font-size: 13px; margin-top: 5px; }
-    .success-message { color: #27ae60; font-size: 13px; margin-top: 5px; }
+    body { 
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 400px;
+      width: 100%;
+      padding: 40px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #999;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 20px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .error {
+      color: #f44336;
+      font-size: 14px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #ffebee;
+      border-radius: 4px;
+      display: none;
+    }
+    .links {
+      text-align: center;
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .links a {
+      color: #667eea;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .links a:hover {
+      text-decoration: underline;
+    }
+    .loading { display: none; text-align: center; margin-top: 10px; }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="/css/menu.css">
 </head>
 <body>
-
-<div class="login-container">
-  
-  <div class="login-header">
-    <div class="login-logo">📦</div>
-    <h1 class="login-title">JUohannes</h1>
-    <p class="login-subtitle">Fast Delivery Service</p>
-  </div>
-
-  <form id="loginForm">
-    
-    <div class="form-group">
-      <label class="form-label">Email Address</label>
-      <input type="email" id="email" class="form-input" placeholder="you@example.com" required>
-      <div class="error-message" id="emailError"></div>
+  <div class="container">
+    <div class="header">
+      <div class="logo">📦</div>
+      <h1>Login</h1>
+      <p class="subtitle">Welcome back to JUohannes Deliveries</p>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input type="password" id="password" class="form-input" placeholder="••••••••" required>
-      <div class="error-message" id="passwordError"></div>
-    </div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="email">Email or Username *</label>
+        <input type="text" id="email" placeholder="your@email.com or username" required autofocus>
+      </div>
 
-    <button type="submit" class="form-button">Sign In</button>
+      <div class="form-group">
+        <label for="password">Password *</label>
+        <input type="password" id="password" placeholder="Enter your password" required>
+      </div>
 
-    <div id="loginError" class="error-message" style="text-align: center; margin-top: 15px;"></div>
-    <div id="loginSuccess" class="success-message" style="text-align: center; margin-top: 15px;"></div>
+      <div id="errorMsg" class="error"></div>
 
-  </form>
+      <button type="submit" class="btn" id="submitBtn">Login</button>
 
-  <div class="form-footer">
-    <p>Don't have an account? <a href="register.html">Create one</a></p>
-    <p style="margin-top: 10px;"><a href="forgot-password.html">Forgot password?</a></p>
+      <div class="loading" id="loading">
+        <span class="spinner"></span> Logging in...
+      </div>
+
+      <div class="links">
+        <a href="forgot-password.html">Forgot Password?</a>
+        <a href="register.html">Create Account</a>
+      </div>
+    </form>
   </div>
 
-</div>
+  <script>
+    const API_BASE_URL = window.location.origin;
+    const form = document.getElementById('loginForm');
+    const errorMsg = document.getElementById('errorMsg');
+    const loading = document.getElementById('loading');
+    const submitBtn = document.getElementById('submitBtn');
 
-<script src="/js/config.js"></script>
-<script>
-  document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const errorDiv = document.getElementById('loginError');
-    const successDiv = document.getElementById('loginSuccess');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      errorMsg.style.display = 'none';
+      loading.style.display = 'block';
+      submitBtn.disabled = true;
 
-    errorDiv.textContent = '';
-    successDiv.textContent = '';
-
-    try {
-      const response = await fetch((window.API_BASE || '') + '/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('userEmail', email);
-        successDiv.textContent = 'Login successful! Redirecting...';
-        
-        setTimeout(() => {
-          // Check role and redirect
-          fetch('/api/check-session', {
-            headers: { 'Authorization': `Bearer ${data.token}` }
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value
           })
-          .then(r => r.json())
-          .then(d => {
-            if (d.redirectUrl) {
-              window.location.href = d.redirectUrl;
-            }
-          });
-        }, 1000);
-      } else {
-        errorDiv.textContent = data.message || 'Login failed. Please try again.';
-      }
-    } catch (err) {
-      errorDiv.textContent = 'Connection error. Please try again.';
-      console.error('Login error:', err);
-    }
-  });
-</script>
+        });
 
-  <script src="/js/menu.js"></script>
+        const data = await response.json();
+
+        if (data.success) {
+          localStorage.setItem('token', data.token);
+          window.location.href = data.redirectUrl || '/customer.html';
+        } else {
+          errorMsg.textContent = '❌ ' + (data.message || 'Login failed');
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        errorMsg.textContent = '❌ Connection error: ' + err.message;
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+      } finally {
+        loading.style.display = 'none';
+      }
+    });
+  </script>
 </body>
 </html>
