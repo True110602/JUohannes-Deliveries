@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Reports 📈</h1>
+  <p class="page-sub">Revenue, commissions and performance across the platform.</p>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card"><h2>Orders — last 14 days</h2><div id="chart"></div></div>
+  <div class="card"><h2>Orders by status</h2><div id="byStatus"></div></div>
+  <div class="card"><h2>🏪 Top shops</h2><div id="shops"></div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('admin')) return;
+  try {
+    const orders = await JD.api('/api/orders');
+    const delivered = orders.filter(o => o.status === 'delivered');
+    const total = (o) => (o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0);
+    const gross = delivered.reduce((s, o) => s + total(o), 0);
+    const platform = delivered.reduce((s, o) => s + (o.platformCommission || 0), 0);
+    const drivers = delivered.reduce((s, o) => s + (o.driverCommission || 0), 0);
+    const rate = orders.length ? Math.round(delivered.length / orders.length * 100) : 0;
+
+    document.getElementById('stats').innerHTML =
+      JD.statCard('Gross sales', JD.money(gross), delivered.length + ' delivered orders') +
+      JD.statCard('Platform commission', JD.money(platform), 'Your earnings') +
+      JD.statCard('Driver payouts', JD.money(drivers), 'Fees + tips') +
+      JD.statCard('Avg order value', JD.money(delivered.length ? gross / delivered.length : 0)) +
+      JD.statCard('Success rate', rate + '%', orders.length + ' orders in total');
+
+    const days = [];
+    for (let i = 13; i >= 0; i--) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); days.push({ key: d.toDateString(), label: d.getDate() + '/' + (d.getMonth() + 1) }); }
+    const byDay = Object.fromEntries(days.map(d => [d.key, 0]));
+    orders.forEach(o => { const k = new Date(o.createdAt).toDateString(); if (k in byDay) byDay[k]++; });
+    document.getElementById('chart').innerHTML = JD.bars(days.map(d => ({ label: d.label, value: byDay[d.key], text: byDay[d.key] || '' })));
+
+    const statuses = ['pending', 'assigned', 'picked_up', 'delivered', 'cancelled', 'failed'];
+    document.getElementById('byStatus').innerHTML = JD.table(
+      [{ h: 'Status', f: s => JD.badge(s) }, { h: 'Orders', f: s => orders.filter(o => o.status === s).length },
+       { h: 'Share', f: s => orders.length ? Math.round(orders.filter(o => o.status === s).length / orders.length * 100) + '%' : '0%' }], statuses);
+
+    const tally = {};
+    delivered.forEach(o => {
+      const em = (o.lineItems && o.lineItems[0] && o.lineItems[0].merchantEmail) || o.pickup || 'Unknown';
+      const t = tally[em] || (tally[em] = { n: 0, rev: 0 }); t.n++; t.rev += o.amount || 0;
+    });
+    const top = Object.entries(tally).sort((a, b) => b[1].rev - a[1].rev).slice(0, 8);
+    document.getElementById('shops').innerHTML = top.length
+      ? JD.table([{ h: 'Shop', f: r => JD.esc(r[0]) }, { h: 'Delivered', f: r => r[1].n }, { h: 'Sales', f: r => JD.money(r[1].rev) }], top)
+      : JD.empty('🏪', 'Top shops appear once orders are delivered.');
+  } catch (e) { JD.fail(e, document.getElementById('stats')); }
+});
+
+</script>
+</body>
+</html>
