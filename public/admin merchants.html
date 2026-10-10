@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merchants - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Merchants 🏪</h1>
+  <p class="page-sub">Review new shops. A merchant can’t be seen by customers until you approve them.</p>
+  <div id="tabs"></div>
+  <div class="card"><div id="list"><div class="empty">Loading…</div></div></div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('admin')) return;
+  let merchants = [];
+  let tab = JD.param('tab') === 'approved' ? 'approved' : 'pending';
+  const tabsUi = JD.tabs(document.getElementById('tabs'), [{ id: 'pending', label: 'Awaiting approval' }, { id: 'approved', label: 'Approved' }], tab, (id) => { tab = id; draw(); });
+
+  function draw() {
+    const rows = merchants.filter(m => tab === 'approved' ? m.approved : !m.approved);
+    document.getElementById('list').innerHTML = rows.length ? JD.table([
+      { h: 'Shop', f: m => `<b>${JD.esc(m.shopName || m.name || '—')}</b>` },
+      { h: 'Owner', f: m => JD.esc(m.name || '—') },
+      { h: 'Email', f: m => JD.esc(m.email) },
+      { h: 'Registered', f: m => JD.date(m.createdAt) },
+      { h: '', f: m => m.approved ? '<span class="badge ok">Approved</span>' : `<button class="btn btn-sm btn-success" data-approve="${m._id}">Approve</button>` }
+    ], rows) : JD.empty(tab === 'pending' ? '🎉' : '🏪', tab === 'pending' ? 'No shops waiting for approval.' : 'No approved merchants yet.');
+  }
+
+  async function load() {
+    try {
+      merchants = await JD.api('/api/admin/merchants');
+      tabsUi.counts({ pending: merchants.filter(m => !m.approved).length, approved: merchants.filter(m => m.approved).length });
+      draw();
+    } catch (e) { JD.fail(e, document.getElementById('list')); }
+  }
+
+  document.getElementById('list').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-approve]');
+    if (!b) return;
+    b.disabled = true;
+    try { await JD.api(`/api/admin/merchants/${b.dataset.approve}/approve`, { method: 'PATCH' }); JD.toast('Merchant approved'); await load(); }
+    catch (err) { JD.toast(err.message); b.disabled = false; }
+  });
+  load();
+});
+
+</script>
+</body>
+</html>
