@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wallet - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+
+<main class="main-content">
+  <h1 class="page-title">Wallet 💳</h1>
+  <p class="page-sub">Your referral credit, spending and payment history.</p>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card">
+    <h2>🎁 Refer a friend</h2>
+    <p style="margin:0 0 12px;color:#666;font-size:14px">Share your code. When a friend signs up with it and gets their first delivery, you earn credit that comes off a future order — and they get a discount on their first order.</p>
+    <div class="toolbar">
+      <input type="text" id="code" readonly class="grow" style="font-weight:700;letter-spacing:2px;font-size:18px;max-width:260px">
+      <button class="btn" id="copy">Copy code</button>
+      <button class="btn btn-secondary" id="share">Share</button>
+    </div>
+    <div id="referredNote" class="page-sub" style="margin:8px 0 0"></div>
+  </div>
+  <div class="card">
+    <h2>🧾 Payment history</h2>
+    <div id="history"><div class="empty">Loading…</div></div>
+  </div>
+</main>
+
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!JD.guard('customer')) return;
+
+  try {
+    const [ref, orders] = await Promise.all([
+      JD.api('/api/account/referral').catch(() => null),
+      JD.api('/api/orders/my-history')
+    ]);
+    const list = Array.isArray(orders) ? orders : (orders.orders || []);
+    const delivered = list.filter(o => o.status === 'delivered');
+    const total = (o) => (o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0);
+    const spent = delivered.reduce((s, o) => s + total(o), 0);
+    const saved = list.reduce((s, o) => s + (o.discountApplied || 0) + (o.creditApplied || 0), 0);
+
+    document.getElementById('stats').innerHTML =
+      JD.statCard('Referral credit', JD.money(ref && ref.referralCredit), 'Applied to your next order') +
+      JD.statCard('Total spent', JD.money(spent), delivered.length + ' delivered orders') +
+      JD.statCard('Saved with offers', JD.money(saved), 'Discounts + credit used') +
+      JD.statCard('Orders placed', list.length, delivered.length + ' delivered');
+
+    const codeEl = document.getElementById('code');
+    codeEl.value = (ref && ref.referralCode) || '—';
+    const note = [];
+    if (ref && ref.firstOrderDiscountEligible) note.push('🎉 You have a 10% first-order discount waiting.');
+    if (ref && ref.referredCount) note.push(ref.referredCount + ' friend' + (ref.referredCount === 1 ? '' : 's') + ' joined with your code.');
+    document.getElementById('referredNote').textContent = note.join(' ');
+
+    document.getElementById('copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(codeEl.value); JD.toast('Code copied'); } catch (e) { codeEl.select(); JD.toast('Press Ctrl+C to copy'); }
+    };
+    document.getElementById('share').onclick = async () => {
+      const text = `Join me on JUohannes Deliveries — use my code ${codeEl.value} when you sign up.`;
+      if (navigator.share) { try { await navigator.share({ text }); } catch (e) {} }
+      else { try { await navigator.clipboard.writeText(text); JD.toast('Invite message copied'); } catch (e) { JD.toast(text); } }
+    };
+
+    const h = document.getElementById('history');
+    h.innerHTML = list.length ? JD.table([
+      { h: 'Date', f: o => JD.date(o.createdAt) },
+      { h: 'Order', f: o => JD.esc((o.lineItems && o.lineItems[0] && o.lineItems[0].name) || o.item || 'Order') + (o.lineItems && o.lineItems.length > 1 ? ` +${o.lineItems.length - 1}` : '') },
+      { h: 'Method', f: o => JD.esc(o.paymentMethod || 'Cash') },
+      { h: 'Status', f: o => JD.badge(o.status) },
+      { h: 'Total', f: o => '<b>' + JD.money(total(o)) + '</b>' }
+    ], list) : JD.empty('🧾', 'No payments yet.');
+  } catch (e) { JD.fail(e, document.getElementById('history')); }
+});
+
+</script>
+</body>
+</html>
