@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support Chat - JUohannes Deliveries</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+      height: 100vh;
+      max-height: 100vh;
+    }
+
+    .sidebar {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .chat-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .chat-item {
+      padding: 15px;
+      margin-bottom: 8px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      border-left: 4px solid transparent;
+    }
+
+    .chat-item:hover {
+      background: #e9ecef;
+      transform: translateX(4px);
+    }
+
+    .chat-item.active {
+      background: #667eea;
+      color: white;
+      border-left-color: #764ba2;
+    }
+
+    .chat-item-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .chat-item-preview {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-panel {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 20px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .call-controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .message-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.sent {
+      justify-content: flex-end;
+    }
+
+    .message-bubble {
+      max-width: 60%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      word-wrap: break-word;
+    }
+
+    .message.received .message-bubble {
+      background: #e9ecef;
+      color: #333;
+    }
+
+    .message.sent .message-bubble {
+      background: #667eea;
+      color: white;
+    }
+
+    .message-time {
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    .input-area {
+      padding: 20px;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+    }
+
+    .message-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .message-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .video-container {
+      padding: 20px;
+      background: #000;
+      border-radius: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .video-container.active {
+      display: grid;
+    }
+
+    video {
+      background: #1a1a1a;
+      border-radius: 8px;
+      width: 100%;
+      height: auto;
+    }
+
+    #localVideo {
+      transform: scaleX(-1);
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .status-online {
+      background: #10b981;
+    }
+
+    .status-offline {
+      background: #ef4444;
+    }
+
+    .status-ringing {
+      background: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .system-message {
+      text-align: center;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .incoming-call-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .incoming-call-modal.show {
+      display: flex;
+    }
+
+    .call-modal-content {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+
+    .call-modal-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .call-modal-subtitle {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 30px;
+    }
+
+    .call-modal-buttons {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      flex-direction: column;
+      gap: 15px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .message-bubble {
+        max-width: 80%;
+      }
+
+      .video-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Sidebar - Chat List -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        💬 Support Chats
+      </div>
+      <div class="chat-list" id="chatList">
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <div>No active chats</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Panel - Chat Messages -->
+    <div class="main-panel">
+      <div id="noChatSelected" class="empty-state">
+        <div class="empty-state-icon">👋</div>
+        <div>Select a chat to start messaging</div>
+      </div>
+
+      <div id="chatPanel" style="display: none; height: 100%; display: flex; flex-direction: column;">
+        <!-- Header with Chat Info & Call Buttons -->
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              <span class="status-indicator status-online"></span>
+              <span id="chatTitle">Chat</span>
+            </div>
+          </div>
+          <div class="call-controls">
+            <button class="btn btn-primary" id="audioCallBtn" onclick="initiateCall('audio')">
+              📞 Audio Call
+            </button>
+            <button class="btn btn-primary" id="videoCallBtn" onclick="initiateCall('video')">
+              📹 Video Call
+            </button>
+            <button class="btn btn-danger" id="endCallBtn" onclick="endCall()" style="display: none;">
+              📞 End Call
+            </button>
+          </div>
+        </div>
+
+        <!-- Video Area (Hidden until call starts) -->
+        <div class="video-container" id="videoContainer">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="message-area">
+          <div class="messages-container" id="messagesContainer"></div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+          <input
+            type="text"
+            class="message-input"
+            id="messageInput"
+            placeholder="Type your message..."
+            autocomplete="off"
+          >
+          <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Call Modal -->
+  <div class="incoming-call-modal" id="incomingCallModal">
+    <div class="call-modal-content">
+      <div class="call-modal-title">📞 Incoming Call</div>
+      <div class="call-modal-subtitle" id="callModalSubtitle">User is calling...</div>
+      <div class="call-modal-buttons">
+        <button class="btn btn-success" onclick="acceptCall()">Accept</button>
+        <button class="btn btn-danger" onclick="declineCall()">Decline</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    // ==========================================
+    // GLOBALS
+    // ==========================================
+    let socket = null;
+    let currentChatId = null;
+    let currentUserId = null;
+    let currentUserName = null;
+    let currentUserRole = null;
+    let currentCallId = null;
+    let isCallActive = false;
+    let peerConnection = null;
+    let localStream = null;
+    let chats = [];
+
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      const token = localStorage.getItem('token');
+      const userId = localStorage.getItem('userId');
+      const userName = localStorage.getItem('userName');
+      const userRole = localStorage.getItem('userRole');
+
+      if (!token || !userId) {
+        alert('Not authenticated. Please log in first.');
+        window.location.href = '/login.html';
+        return;
+      }
+
+      currentUserId = userId;
+      currentUserName = userName || 'User';
+      currentUserRole = userRole || 'customer';
+
+      // Initialize Socket.io connection to support namespace
+      socket = io('/support', {
+        auth: { token }
+      });
+
+      setupSocketListeners();
+      loadChats();
+    });
+
+    // ==========================================
+    // SOCKET.IO LISTENERS
+    // ==========================================
+    function setupSocketListeners() {
+      socket.on('connect', () => {
+        console.log('✅ Connected to support namespace');
+      });
+
+      socket.on('new_message', (msg) => {
+        if (msg && currentChatId) {
+          displayMessage(msg);
+        }
+      });
+
+      socket.on('user_joined', (data) => {
+        showSystemMessage(`${data.email} joined the chat`);
+      });
+
+      socket.on('user_left', (data) => {
+        showSystemMessage(`${data.email} left the chat`);
+      });
+
+      socket.on('incoming_call', (data) => {
+        showIncomingCallPrompt(data);
+      });
+
+      socket.on('call_connected', (data) => {
+        showSystemMessage('Call connected');
+        document.getElementById('videoContainer').classList.add('active');
+        document.getElementById('audioCallBtn').disabled = true;
+        document.getElementById('videoCallBtn').disabled = true;
+        document.getElementById('endCallBtn').style.display = 'inline-block';
+        isCallActive = true;
+      });
+
+      socket.on('call_ended', (data) => {
+        showSystemMessage(`Call ended - Duration: ${data.duration}s`);
+        endCallLocally();
+      });
+
+      socket.on('call_rejected', (data) => {
+        showSystemMessage(`Call rejected: ${data.reason}`);
+      });
+
+      socket.on('webrtc_offer', async (data) => {
+        console.log('Received WebRTC offer');
+        // TODO: Implement WebRTC answer logic with SimplePeer or PeerJS
+      });
+
+      socket.on('webrtc_answer', async (data) => {
+        console.log('Received WebRTC answer');
+        // TODO: Implement WebRTC peer connection establishment
+      });
+
+      socket.on('error', (error) => {
+        console.error('Socket error:', error);
+        alert('Connection error: ' + error);
+      });
+    }
+
+    // ==========================================
+    // CHAT MANAGEMENT
+    // ==========================================
+    async function loadChats() {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/support-chat/chats', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Failed to load chats');
+
+        const data = await response.json();
+        chats = data.chats || [];
+        renderChatList();
+      } catch (error) {
+        console.error('Error loading chats:', error);
+      }
+    }
+
+    function renderChatList() {
+      const chatList = document.getElementById('chatList');
+
+      if (!chats || chats.length === 0) {
+        chatList.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div>No active chats</div>
+          </div>
+        `;
+        return;
+      }
+
+      chatList.innerHTML = chats.map(chat => `
+        <div class="chat-item ${currentChatId === chat._id ? 'active' : ''}" onclick="selectChat('${chat._id}')">
+          <div class="chat-item-title">Ticket #${chat.ticketId.substring(0, 8)}</div>
+          <div class="chat-item-preview">
+            ${chat.messages && chat.messages.length > 0
+              ? chat.messages[chat.messages.length - 1].text.substring(0, 30) + '...'
+              : 'No messages yet'
+            }
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function selectChat(chatId) {
+      currentChatId = chatId;
+      renderChatList();
+
+      // Show chat panel
+      document.getElementById('noChatSelected').style.display = 'none';
+      document.getElementById('chatPanel').style.display = 'flex';
+
+      // Load chat history
+      try {
+        const token = localStorage.getItem('token');
+        const chat = chats.find(c => c._id === chatId);
+        const ticketId = chat.ticketId;
+
+        const response = await fetch(`/api/support-chat/chat/${ticketId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Failed to load chat');
+
+        const data = await response.json();
+        const chatData = data.chat;
+
+        document.getElementById('chatTitle').textContent = `Ticket #${ticketId.substring(0, 8)}`;
+        document.getElementById('messagesContainer').innerHTML = '';
+
+        // Display all messages
+        if (chatData.messages && chatData.messages.length > 0) {
+          chatData.messages.forEach(msg => displayMessage(msg, false));
+        }
+
+        // Join the chat room via Socket.io
+        socket.emit('join_chat', {
+          chatId,
+          userId: currentUserId,
+          email: localStorage.getItem('userEmail') || 'user@example.com',
+          role: currentUserRole
+        });
+      } catch (error) {
+        console.error('Error loading chat:', error);
+        alert('Failed to load chat history');
+      }
+    }
+
+    // ==========================================
+    // MESSAGE HANDLING
+    // ==========================================
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+
+      if (!message) return;
+      if (!currentChatId) {
+        alert('Please select a chat first');
+        return;
+      }
+
+      input.value = '';
+
+      // Emit via Socket.io
+      socket.emit('send_message', {
+        chatId: currentChatId,
+        senderId: currentUserId,
+        senderName: currentUserName,
+        senderRole: currentUserRole,
+        message
+      });
+    }
+
+    function displayMessage(msg, playAnimation = true) {
+      const container = document.getElementById('messagesContainer');
+      const isOwn = msg.senderId === currentUserId;
+      const timestamp = new Date(msg.timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${isOwn ? 'sent' : 'received'}`;
+      messageEl.innerHTML = `
+        <div>
+          <div class="message-bubble">${escapeHtml(msg.message)}</div>
+          <div class="message-time">${msg.senderName} • ${timestamp}</div>
+        </div>
+      `;
+
+      container.appendChild(messageEl);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function showSystemMessage(text) {
+      const container = document.getElementById('messagesContainer');
+      const msgEl = document.createElement('div');
+      msgEl.className = 'system-message';
+      msgEl.textContent = text;
+      container.appendChild(msgEl);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // ==========================================
+    // CALL HANDLING
+    // ==========================================
+    async function initiateCall(callType) {
+      if (!currentChatId) {
+        alert('Please select a chat first');
+        return;
+      }
+
+      try {
+        // TODO: Get targetUserId from chat participants
+        const targetUserId = 'OTHER_USER_ID'; // Replace with actual target user
+
+        socket.emit('call_initiate', {
+          chatId: currentChatId,
+          callerId: currentUserId,
+          callerName: currentUserName,
+          calleeId: targetUserId,
+          callType
+        });
+
+        showSystemMessage(`Initiating ${callType} call...`);
+        document.getElementById('audioCallBtn').disabled = true;
+        document.getElementById('videoCallBtn').disabled = true;
+
+        // Start local video/audio stream if video call
+        if (callType === 'video') {
+          await startLocalStream('video');
+        } else if (callType === 'audio') {
+          await startLocalStream('audio');
+        }
+      } catch (error) {
+        console.error('Error initiating call:', error);
+        alert('Failed to initiate call');
+      }
+    }
+
+    async function startLocalStream(type) {
+      try {
+        const constraints = {
+          audio: true,
+          video: type === 'video' ? { width: 640, height: 480 } : false
+        };
+
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        if (type === 'video') {
+          const localVideo = document.getElementById('localVideo');
+          localVideo.srcObject = localStream;
+        }
+
+        showSystemMessage('Local stream started');
+      } catch (error) {
+        console.error('Error accessing media:', error);
+        alert('Failed to access camera/microphone');
+      }
+    }
+
+    function showIncomingCallPrompt(data) {
+      const modal = document.getElementById('incomingCallModal');
+      const subtitle = document.getElementById('callModalSubtitle');
+      subtitle.textContent = `${data.callerName} is calling (${data.callType})...`;
+      modal.classList.add('show');
+    }
+
+    async function acceptCall() {
+      document.getElementById('incomingCallModal').classList.remove('show');
+      await startLocalStream('video');
+
+      socket.emit('call_answered', {
+        chatId: currentChatId,
+        answeredBy: currentUserName
+      });
+    }
+
+    function declineCall() {
+      document.getElementById('incomingCallModal').classList.remove('show');
+
+      socket.emit('call_rejected', {
+        chatId: currentChatId,
+        reason: 'Call declined by user'
+      });
+    }
+
+    async function endCall() {
+      endCallLocally();
+
+      socket.emit('call_ended', {
+        chatId: currentChatId,
+        duration: Math.floor((Date.now() - callStartTime) / 1000)
+      });
+    }
+
+    function endCallLocally() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+
+      document.getElementById('videoContainer').classList.remove('active');
+      document.getElementById('localVideo').srcObject = null;
+      document.getElementById('remoteVideo').srcObject = null;
+      document.getElementById('audioCallBtn').disabled = false;
+      document.getElementById('videoCallBtn').disabled = false;
+      document.getElementById('endCallBtn').style.display = 'none';
+      isCallActive = false;
+    }
+
+    // ==========================================
+    // UTILITIES
+    // ==========================================
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Allow sending message with Enter key
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
