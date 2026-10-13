@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); // switched from native bcrypt - pure JS, no compile step that can fail on deploy
 const jwt = require('jsonwebtoken');
-const { Resend } = require('resend');
+const sgMail = require('@sendgrid/mail');
 const { Paynow } = require('paynow');
 const path = require('path');
 const helmet = require('helmet');
@@ -16,6 +16,8 @@ const rateLimit = require('express-rate-limit');
 const User = require('./models/user');
 const DriverLocation = require('./models/DriverLocation');
 const Order = require('./models/Order');
+const SupportChat = require('./models/SupportChat');
+const SupportCall = require('./models/SupportCall');
 const { authenticateToken, JWT_SECRET } = require('./middleware/auth');
 const catalogRoutes = require('./routes/catalog');
 const orderRoutes = require('./routes/orders');
@@ -23,9 +25,11 @@ const merchantRoutes = require('./routes/merchant');
 const adminRoutes = require('./routes/admin');
 const accountRoutes = require('./routes/account');
 const supportRoutes = require('./routes/support');
+const supportChatRoutes = require('./routes/support-chat');
 const notificationRoutes = require('./routes/notifications');
 const spreadsheetRoutes = require('./routes/spreadsheet');
 const { customerRouter: customerStatsRoutes, driverRouter: driverStatsRoutes } = require('./routes/stats');
+const setupSupportSocket = require('./socket-support-events');
 const { notifyUser, notifyRole } = require('./utils/notify');
 const { broadcastOrders } = require('./utils/realtime');
 
@@ -151,18 +155,17 @@ mongoose.connection.once('open', () => {
   }
 });
 
-// --- RESEND (password reset emails) ---
-// Set RESEND_API_KEY on Render (Environment tab). EMAIL_FROM must be an address
-// on a domain you've verified in Resend; until then the Resend test sender
-// only delivers to the email address your Resend account was created with.
-const EMAIL_CONFIGURED = !!process.env.RESEND_API_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM || 'Johannes Deliveries <onboarding@resend.dev>';
-const resend = EMAIL_CONFIGURED ? new Resend(process.env.RESEND_API_KEY) : null;
+// --- SENDGRID (password reset emails) ---
+// Set SENDGRID_API_KEY on Render (Environment tab). SENDGRID_FROM_EMAIL must be an address
+// you've verified in SendGrid. Visit https://sendgrid.com to set up an account.
+const EMAIL_CONFIGURED = !!process.env.SENDGRID_API_KEY;
+const EMAIL_FROM = process.env.SENDGRID_FROM_EMAIL || 'noreply@juohannes.com';
 
-if (!EMAIL_CONFIGURED) {
-  console.warn('RESEND_API_KEY not set - password reset emails cannot be sent.');
+if (EMAIL_CONFIGURED) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('\u2705 SendGrid configured - password reset emails can be sent');
 } else {
-  console.log('\u2705 Resend configured - password reset emails can be sent');
+  console.warn('SENDGRID_API_KEY not set - password reset emails cannot be sent.');
 }
 
 // --- PAYNOW (EcoCash payments) ---
@@ -177,7 +180,6 @@ if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
   console.warn('PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY not set - EcoCash orders will be recorded but no real payment request will be sent.');
 }
 app.set('paynow', paynow);
-app.set('resend', resend);
 app.set('emailFrom', EMAIL_FROM);
 app.set('emailConfigured', EMAIL_CONFIGURED);
 
@@ -412,19 +414,25 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
       user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
       await user.save();
 
-      // The Resend SDK returns { data, error } instead of throwing
-      const { error } = await resend.emails.send({
-        from: EMAIL_FROM,
+      // Send email using SendGrid
+      const msg = {
         to: email,
-        subject: 'Password Reset Verification Code - Johannes Deliveries',
-        text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 15 minutes.`
-      });
-      if (error) throw new Error(error.message || JSON.stringify(error));
+        from: EMAIL_FROM,
+        subject: 'Password Reset Verification Code - JUohannes Deliveries',
+        html: `
+          <h2>Password Reset Request</h2>
+          <p>Your password reset code is:</p>
+          <h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3>
+          <p><strong>This code will expire in 15 minutes.</strong></p>
+          <p>If you did not request a password reset, you can ignore this email.</p>
+        `
+      };
+      await sgMail.send(msg);
     }
 
     res.json({ success: true, message: 'If that email is registered, a verification code has been sent.' });
   } catch (err) {
-    // Log the actual Resend error server-side (e.g. invalid API key or an
+    // Log the SendGrid error server-side (e.g. invalid API key or an
     // unverified sender domain) - it only shows up here, in the Render logs.
     console.error('Password Reset Request Error:', err.message || err);
     res.status(500).json({ success: false, message: 'Failed to send reset code. Check the server logs for the exact mail error.' });
@@ -480,6 +488,7 @@ app.use('/api/merchant', merchantRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/support-chat', supportChatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/spreadsheet', spreadsheetRoutes);
 app.use('/api/customer', customerStatsRoutes);
@@ -532,6 +541,9 @@ io.use((socket, next) => {
     next();
   });
 });
+
+// Initialize support chat and call system (WebRTC signaling via Socket.io)
+setupSupportSocket(io);
 
 function fleetPayload(drivers) {
   return drivers.map(d => ({ driverId: d.driverId, lat: d.lat, lng: d.lng }));
