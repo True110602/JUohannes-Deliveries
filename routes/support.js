@@ -6,12 +6,6 @@ const User = require('../models/user');
 const { requireRole, JWT_SECRET } = require('../middleware/auth');
 const { notifyUser, notifyRole } = require('../utils/notify');
 
-// Same pattern as routes/orders.js's optionalAuth - a ticket should be
-// filable by a guest who hasn't even registered yet (e.g. "the app won't
-// let me place an order"), so this never rejects a request just because
-// there's no token. If a valid token IS present, we trust its email/role
-// over whatever the client sent, so a ticket always resolves to the real
-// logged-in account rather than a spoofable name field.
 function optionalAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -34,18 +28,28 @@ router.post('/', optionalAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please describe the issue.' });
     }
 
+    // --- IMPLEMENTED CRITICAL CHANGE ---
+    // Find the admin to ensure this ticket is associated with an administrator
+    const admin = await User.findOne({ role: 'admin' });
+    if (!admin) {
+      console.error("Critical Error: No admin user found in database to handle support.");
+      // We continue anyway so the user can submit, but log the error
+    }
+
     const ticket = new SupportTicket({
       subject: subject.trim(),
       message: message.trim(),
       relatedOrderId: relatedOrderId || null,
-      // Logged-in identity always wins over client-supplied fields.
       name: (req.user && req.user.email) ? req.user.email : (typeof name === 'string' ? name.trim() : ''),
       email: (req.user && req.user.email) || (typeof email === 'string' && email.trim() ? email.trim() : null),
-      role: (req.user && req.user.role) || 'guest'
+      role: (req.user && req.user.role) || 'guest',
+      // If your SupportTicket model has an 'assignedTo' field, we add it here:
+      assignedTo: admin ? admin._id : null 
     });
 
     await ticket.save();
 
+    // Notify the admin immediately
     notifyRole(req.app.get('io'), User, 'admin', {
       title: 'New support ticket',
       message: `${ticket.name || 'A guest'} reported: "${ticket.subject}"`
@@ -58,7 +62,7 @@ router.post('/', optionalAuth, async (req, res) => {
   }
 });
 
-// Admin-only inbox. ?status=open|in_progress|resolved filters; omit for all.
+// Admin-only inbox.
 router.get('/', ...requireRole('admin'), async (req, res) => {
   try {
     const filter = {};
