@@ -103,8 +103,8 @@
     </li>
     <li class="menu-item">
       <a href="restaurants.html" class="menu-link">
-        <span class="menu-icon">🍽️</span>
-        Restaurants
+        <span class="menu-icon">🏪</span>
+        Explore Shops
       </a>
     </li>
     <li class="menu-item">
@@ -165,19 +165,19 @@
       <a href="orders.html?tab=reviews" class="btn btn-secondary">Reviews</a>
     </div>
     <div class="card">
-      <div class="card-title">📋 Orders</div>
+      <div class="card-title">📋 Total Orders</div>
       <div class="card-value" data-stat="totalOrders">0</div>
       <a href="orders.html" class="btn btn-secondary">All Orders</a>
     </div>
   </div>
 
-  <!-- Live Delivery Tracking (when there's an active order) -->
+  <!-- Live Delivery Tracking -->
   <div class="card map-section" id="mapSection">
     <h2 class="card-title">🚗 Track Your Delivery</h2>
-    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Real-time tracking of your order delivery</p>
+    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Real-time tracking of your delivery</p>
     <div id="noDelivery" style="display:none;background:#f0f4ff;color:#4a5190;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px;">
       🛵 No delivery in progress right now. When a driver picks up your order you can follow it here live.
-      <a href="/restaurants.html" style="font-weight:700;margin-left:6px;">Order something →</a>
+      <a href="/index.html" style="font-weight:700;margin-left:6px;">Order something →</a>
     </div>
     <div id="map"></div>
   </div>
@@ -186,7 +186,7 @@
   <div class="card">
     <h2 class="card-title">📦 Recent Orders</h2>
     <div id="ordersContainer">
-      <p style="color: #999; text-align: center; padding: 20px;">No orders yet. Start ordering now!</p>
+      <p style="color: #999; text-align: center; padding: 20px;">No orders yet. Start delivering now!</p>
     </div>
   </div>
 
@@ -197,8 +197,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script>
-  // CUSTOMER DASHBOARD SCRIPT
-  
   let map;
   let driverMarker;
   let customerMarker;
@@ -216,370 +214,54 @@
   function loadUserInfo() {
     const token = localStorage.getItem('token');
     if (!token) return;
-
     try {
       const parts = token.split('.');
       if (parts.length !== 3) return;
-      
       const payload = JSON.parse(atob(parts[1]));
       const email = payload.email || 'customer@example.com';
       const name = payload.email ? payload.email.split('@')[0] : 'Customer';
       const initials = name.substring(0, 2).toUpperCase();
-      
       document.getElementById('userName').textContent = name;
       document.getElementById('userEmail').textContent = email;
       document.getElementById('userAvatar').textContent = initials;
-    } catch (err) {
-      console.error('Error parsing user info:', err);
-    }
+    } catch (err) { console.error('Error parsing user info:', err); }
   }
 
   function connectSocket() {
     socket = io({ auth: { token: localStorage.getItem('token') } });
-    
-    socket.on('connect', () => {
-      console.log('✅ Connected to server');
-    });
-
-    // Receive driver position updates
+    socket.on('connect', () => { console.log('✅ Connected to server'); });
     socket.on('driver_position', (data) => {
-      console.log('Driver position update:', data);
       if (map && driverMarker) {
         driverMarker.setLatLng([data.lat, data.lng]);
         map.setView([data.lat, data.lng], 14);
       }
     });
-
-    socket.on('order_status_update', (order) => {
-      console.log('Order status updated:', order);
-      loadOrders();
-    });
-
-    socket.on('disconnect', () => {
-      console.log('Disconnected from server');
-    });
+    socket.on('order_status_update', (order) => { loadOrders(); });
   }
 
   async function loadStats() {
     const token = localStorage.getItem('token');
     if (!token) return;
-
     try {
-      const response = await fetch('/api/customer/stats', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch stats:', response.status);
-        return;
-      }
-
+      const response = await fetch('/api/customer/stats', { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await response.json();
-
       if (data.success) {
         updateAllStats('activeOrders', data.activeOrders || 0);
         updateAllStats('totalSpent', '$' + (data.totalSpent || 0).toFixed(2));
         updateAllStats('customerRating', (data.customerRating || 4.8).toFixed(1));
         updateAllStats('totalOrders', data.totalOrders || 0);
       }
-    } catch (err) {
-      console.error('Error loading stats:', err);
-    }
+    } catch (err) { console.error('Error loading stats:', err); }
   }
 
   async function loadOrders() {
     const token = localStorage.getItem('token');
     if (!token) return;
-
     try {
-      const response = await fetch('/api/orders/my-history', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch orders:', response.status);
-        return;
-      }
-
+      const response = await fetch('/api/orders/my-history', { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await response.json();
       const orders = Array.isArray(data) ? data : (data.orders || []);
-
-      // Check if there's an active delivery to track
       const activeDelivery = orders.find(o => ['assigned', 'picked_up'].includes(o.status));
-      if (activeDelivery) {
-        displayMapForDelivery(activeDelivery);
-      } else {
-        // No delivery in progress: keep the map visible anyway (centred on the
-        // customer when the browser allows it) with a short note on top.
+      if (activeDelivery) { displayMapForDelivery(activeDelivery); } 
+      else {
         document.getElementById('mapSection').classList.add('active');
-        document.getElementById('map').style.display = '';
-        document.getElementById('noDelivery').style.display = '';
-        showIdleMap();
-        if (location.hash === '#mapSection') document.getElementById('mapSection').scrollIntoView({ block: 'start' });
-      }
-
-      // Display recent orders
-      const container = document.getElementById('ordersContainer');
-      if (orders.length === 0) {
-        container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No orders yet. Start ordering now!</p>';
-      } else {
-        container.innerHTML = orders.slice(0, 5).map(order => `
-          <div class="order-item">
-            <div>
-              <div class="order-name">${order.lineItems?.[0]?.merchantEmail || order.item || 'Order'}</div>
-              <div class="order-date">${new Date(order.createdAt).toLocaleDateString()}</div>
-              <div class="order-status">Status: ${order.status}</div>
-            </div>
-            <div class="order-price">$${(order.amount || 0).toFixed(2)}</div>
-          </div>
-        `).join('');
-      }
-
-      document.getElementById('orderBadge').textContent = orders.length;
-      document.getElementById('orderBadge').style.display = orders.length > 0 ? 'inline-block' : 'none';
-    } catch (err) {
-      console.error('Error loading orders:', err);
-    }
-  }
-
-  function displayMapForDelivery(order) {
-    document.getElementById('mapSection').classList.add('active');
-    document.getElementById('map').style.display = '';
-    document.getElementById('noDelivery').style.display = 'none';
-
-    if (!map) {
-      initMap();
-    }
-
-    // Default center (customer location or Johannesburg)
-    const center = [-26.2023, 28.0436];
-    map.setView(center, 14);
-
-    // Add customer marker if doesn't exist
-    if (!customerMarker) {
-      customerMarker = L.circleMarker(center, {
-        radius: 8,
-        fillColor: '#4CAF50',
-        color: '#fff',
-        weight: 2,
-        fillOpacity: 0.8
-      }).bindPopup('📍 Your Location').addTo(map);
-    } else {
-      customerMarker.setLatLng(center);
-    }
-  }
-
-  // Idle map: shows the customer's own position when allowed, otherwise the default view.
-  function showIdleMap() {
-    initMap();
-    setTimeout(() => map.invalidateSize(), 100);
-    if (!navigator.geolocation || customerMarker) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const here = [pos.coords.latitude, pos.coords.longitude];
-      map.setView(here, 15);
-      if (driverMarker) { map.removeLayer(driverMarker); driverMarker = null; }
-      customerMarker = L.circleMarker(here, { radius: 8, fillColor: '#4CAF50', color: '#fff', weight: 2, fillOpacity: 0.8 })
-        .bindPopup('📍 You are here').addTo(map);
-    }, () => {}, { timeout: 8000 });
-  }
-
-  function initMap() {
-    if (map) return;
-
-    const johannesburg = [-26.2023, 28.0436];
-    
-    map = L.map('map').setView(johannesburg, 14);
-    
-    addConfiguredTileLayer(map);
-
-    // Add driver marker placeholder
-    driverMarker = L.circleMarker(johannesburg, {
-      radius: 10,
-      fillColor: '#667eea',
-      color: '#fff',
-      weight: 3,
-      fillOpacity: 0.8
-    }).bindPopup('🚗 Driver Location').addTo(map);
-
-    console.log('✅ Map initialized for delivery tracking');
-  }
-
-  function updateAllStats(key, value) {
-    document.querySelectorAll(`[data-stat="${key}"]`).forEach(el => {
-      el.textContent = value;
-    });
-  }
-</script>
-  <!-- START SUPPORT WIDGET -->
-<style>
-    /* Floating Button Style */
-    #support-widget-btn {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background-color: #667eea;
-        color: white;
-        border: none;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        z-index: 9999;
-        font-size: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: transform 0.2s;
-    }
-    #support-widget-btn:hover { transform: scale(1.1); }
-
-    /* Chat Window Style */
-    #support-chat-window {
-        position: fixed;
-        bottom: 90px;
-        right: 20px;
-        width: 350px;
-        height: 450px;
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-        display: none; /* Hidden by default */
-        flex-direction: column;
-        z-index: 9999;
-        font-family: sans-serif;
-        overflow: hidden;
-    }
-    #chat-header {
-        background: #667eea;
-        color: white;
-        padding: 15px;
-        font-weight: bold;
-        display: flex;
-        justify-content: space-between;
-    }
-    #chat-messages {
-        flex: 1;
-        padding: 15px;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-    .msg { padding: 8px 12px; border-radius: 10px; max-width: 80%; font-size: 14px; }
-    .msg.me { align-self: flex-end; background: #eef2ff; color: #333; }
-    .msg.them { align-self: flex-start; background: #f1f1f1; color: #333; }
-    #chat-input-area {
-        padding: 15px;
-        border-top: 1px solid #eee;
-        display: flex;
-        gap: 10px;
-    }
-    #chat-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; }
-</style>
-
-<button id="support-widget-btn" onclick="toggleSupportChat()">💬</button>
-
-<div id="support-chat-window">
-    <div id="chat-header">
-        <span>Support Chat</span>
-        <span style="cursor:pointer" onclick="toggleSupportChat()">✖</span>
-    </div>
-    <div id="chat-messages"></div>
-    <div id="chat-input-area">
-        <input type="text" id="chat-input" placeholder="Type a message...">
-        <button onclick="sendSupportMessage()" style="background:#667eea; color:white; border:none; padding:5px 15px; border-radius:5px; cursor:pointer">Send</button>
-    </div>
-</div>
-
-<script>
-    let supportSocket = null;
-    let currentChatId = null;
-
-    async function toggleSupportChat() {
-        const window = document.getElementById('support-chat-window');
-        const isHidden = window.style.display === 'none' || window.style.display === '';
-        
-        if (isHidden) {
-            window.style.display = 'flex';
-            await initSupportConnection();
-        } else {
-            window.style.display = 'none';
-        }
-    }
-
-    async function initSupportConnection() {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            alert("Please login to use support.");
-            toggleSupportChat();
-            return;
-        }
-
-        // 1. Connect to the /support namespace
-        if (!supportSocket) {
-            supportSocket = io('/support', { auth: { token } });
-        }
-
-        // 2. Create or Get a chat session from the API
-        try {
-            const res = await fetch('/api/support/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ message: "Hello, I need help!" })
-            });
-            const data = await res.json();
-            if (data.success) {
-                currentChatId = data.chatId;
-                
-                // Join the socket room
-                const user = JSON.parse(atob(token.split('.')[1])); // Decode JWT to get email/role
-                supportSocket.emit('join_chat', { 
-                    chatId: currentChatId, 
-                    userId: user.id, 
-                    email: user.email, 
-                    role: user.role 
-                });
-            }
-        } catch (err) {
-            console.error("Support connection error:", err);
-        }
-
-        // Listen for messages
-        supportSocket.on('new_message', (msg) => {
-            appendMessage(msg.senderName, msg.message, msg.senderId === 'me' ? 'me' : 'them');
-        });
-    }
-
-    function sendSupportMessage() {
-        const input = document.getElementById('chat-input');
-        const msg = input.value.trim();
-        if (!msg || !currentChatId) return;
-
-        const user = JSON.parse(atob(localStorage.getItem('token').split('.')[1]));
-
-        supportSocket.emit('send_message', {
-            chatId: currentChatId,
-            senderId: user.id,
-            senderName: user.email,
-            senderRole: user.role,
-            message: msg
-        });
-
-        appendMessage('Me', msg, 'me');
-        input.value = '';
-    }
-
-    function appendMessage(name, text, type) {
-        const container = document.getElementById('chat-messages');
-        const div = document.createElement('div');
-        div.className = `msg ${type}`;
-        div.innerHTML = `<strong>${name}:</strong> ${text}`;
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
-</script>
-<!-- END SUPPORT WIDGET -->
-
-</body>
-</html>
