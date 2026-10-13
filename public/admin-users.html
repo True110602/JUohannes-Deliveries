@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Users - JUohannes Deliveries</title>
+  <title>Users - JUohannes Logistics</title>
   <link rel="stylesheet" href="/css/menu.css">
   <link rel="stylesheet" href="/css/pages.css">
 </head>
 <body>
 
 <main class="main-content">
-  <h1 class="page-title">Users 👥</h1>
+  <h1 class="page-title">User Directory 👥</h1>
   <p class="page-sub">Every account on the platform.</p>
   <div class="toolbar">
     <input type="search" id="search" class="grow" placeholder="Search name, email or phone…">
-    <select id="role"><option value="">All roles</option><option value="customer">Customers</option><option value="merchant">Merchants</option><option value="driver">Drivers</option><option value="admin">Admins</option></select>
+    <select id="role"><option value="">All roles</option><option value="customer">Customers</option><option value="merchant">Vendors</option><option value="driver">Couriers</option><option value="admin">Admins</option></select>
   </div>
   <div class="stat-grid" id="stats"></div>
   <div class="card"><div id="list"><div class="empty">Loading…</div></div></div>
@@ -24,7 +24,6 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
-
 document.addEventListener('DOMContentLoaded', async () => {
   if (!JD.guard('admin')) return;
   const $ = (id) => document.getElementById(id);
@@ -48,13 +47,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     users = await JD.api('/api/admin/users');
     const n = (r) => users.filter(u => u.role === r).length;
-    $('stats').innerHTML = JD.statCard('Total', users.length) + JD.statCard('Customers', n('customer')) + JD.statCard('Merchants', n('merchant')) + JD.statCard('Drivers', n('driver'));
+    $('stats').innerHTML = JD.statCard('Total', users.length) + JD.statCard('Customers', n('customer')) + JD.statCard('Vendors', n('merchant')) + JD.statCard('Couriers', n('driver'));
     draw();
   } catch (e) { JD.fail(e, $('list')); }
   $('search').addEventListener('input', draw);
   $('role').addEventListener('change', draw);
 });
-
 </script>
 </body>
 </html>
