@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JUohannes Deliveries - Fast Food Delivery</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+    }
+
+    /* Navbar */
+    .navbar {
+      background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .navbar-brand {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .navbar-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-outline {
+      border: 2px solid #667eea;
+      color: #667eea;
+      background: transparent;
+    }
+
+    .btn-outline:hover {
+      background: #667eea;
+      color: white;
+    }
+
+    /* Hero Section */
+    .hero {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 80px 30px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+
+    .hero p {
+      font-size: 18px;
+      margin-bottom: 30px;
+      opacity: 0.9;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-white {
+      background: white;
+      color: #667eea;
+    }
+
+    .btn-white:hover {
+      background: #f0f0f0;
+    }
+
+    /* Slideshow */
+    .slideshow-section {
+      padding: 60px 30px;
+      background: white;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .section-subtitle {
+      text-align: center;
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 40px;
+    }
+
+    .slideshow-container {
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    .slide {
+      display: none;
+      animation: fadeIn 0.8s;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 500px;
+      position: relative;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .slide-content {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 40px;
+      padding: 40px;
+    }
+
+    .slide-image {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+    }
+
+    .slide-image-placeholder {
+      width: 100%;
+      height: 400px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 80px;
+    }
+
+    .slide-info {
+      flex: 1;
+      color: white;
+    }
+
+    .slide-rating {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+
+    .stars {
+      color: #ffc107;
+    }
+
+    .slide-title {
+      font-size: 36px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .slide-category {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 20px;
+    }
+
+    .slide-description {
+      font-size: 16px;
+      line-height: 1.6;
+      margin-bottom: 30px;
+      opacity: 0.95;
+    }
+
+    .slide-stats {
+      display: flex;
+      gap: 30px;
+      margin-bottom: 30px;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .slide-button {
+      padding: 12px 30px;
+      background: white;
+      color: #667eea;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .slide-button:hover {
+      background: #f0f0f0;
+      transform: translateY(-2px);
+    }
+
+    .prev, .next {
+      cursor: pointer;
+      position: absolute;
+      top: 50%;
+      width: auto;
+      padding: 16px;
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      background: rgba(0,0,0,0.4);
+      user-select: none;
+      z-index: 10;
+      margin-top: -22px;
+      transition: 0.3s;
+    }
+
+    .next { right: 0; }
+    .prev { left: 0; }
+
+    .prev:hover, .next:hover {
+      background: rgba(0,0,0,0.6);
+    }
+
+    .dots {
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+      gap: 8px;
+      background: white;
+    }
+
+    .dot {
+      cursor: pointer;
+      height: 12px;
+      width: 12px;
+      background-color: #bbb;
+      border-radius: 50%;
+      transition: background-color 0.3s;
+    }
+
+    .dot.active {
+      background-color: #667eea;
+    }
+
+    /* Features */
+    .features {
+      padding: 60px 30px;
+      background: #f8f9fa;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      transition: transform 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+    }
+
+    .feature-icon {
+      font-size: 40px;
+      margin-bottom: 15px;
+    }
+
+    .feature-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .feature-text {
+      font-size: 14px;
+      color: #666;
+    }
+
+    /* Footer */
+    .footer {
+      background: #333;
+      color: white;
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    @media (max-width: 768px) {
+      .navbar {
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      .hero h1 {
+        font-size: 32px;
+      }
+
+      .slide-content {
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .slide-title {
+        font-size: 28px;
+      }
+
+      .slide-stats {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <a href="#" class="navbar-brand">🚗 JUohannes Deliveries</a>
+    <div class="navbar-links">
+      <a href="/login.html" class="btn btn-outline">Login</a>
+      <a href="/register.html" class="btn btn-primary">Sign Up</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <h1>Fast Food Delivery at Your Doorstep</h1>
+    <p>Browse our amazing restaurants and get your favorite meals delivered in minutes</p>
+    <div class="hero-buttons">
+      <a href="/register.html" class="btn btn-white">Get Started</a>
+      <a href="#shops" class="btn btn-primary">View Shops</a>
+    </div>
+  </section>
+
+  <section class="slideshow-section" id="shops">
+    <h2 class="section-title">Featured Shops</h2>
+    <p class="section-subtitle">Discover our top-rated restaurants</p>
+
+    <div class="slideshow-container">
+      <div id="slidesContainer"></div>
+      <a class="prev" onclick="changeSlide(-1)">❮</a>
+      <a class="next" onclick="changeSlide(1)">❯</a>
+    </div>
+    <div class="dots" id="dotsContainer"></div>
+  </section>
+
+  <section class="features">
+    <h2 class="section-title">Why Choose Us?</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">Super Fast</div>
+        <div class="feature-text">Get your order delivered in 30 minutes or less</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏪</div>
+        <div class="feature-title">Wide Selection</div>
+        <div class="feature-text">Choose from hundreds of shops and thousands of dishes</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💳</div>
+        <div class="feature-title">Easy Payment</div>
+        <div class="feature-text">Multiple payment options including EcoCash</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📍</div>
+        <div class="feature-title">Real-time Tracking</div>
+        <div class="feature-text">Track your driver in real-time on the map</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⭐</div>
+        <div class="feature-title">Ratings & Reviews</div>
+        <div class="feature-text">See honest reviews from other customers</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <div class="feature-title">24/7 Support</div>
+        <div class="feature-text">Our support team is always ready to help</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>&copy; 2026 JUohannes Deliveries. All rights reserved.</p>
+  </footer>
+
+  <script>
+    let currentSlide = 0;
+    let shops = [];
+
+    async function loadShops() {
+      try {
+        const response = await fetch('/api/catalog/shops');
+        const data = await response.json();
+        shops = data.shops || data.data || getDemoShops();
+      } catch (error) {
+        shops = getDemoShops();
+      }
+      renderSlideshow();
+      startAutoSlide();
+    }
+
+    function getDemoShops() {
+      return [
+        {
+          _id: '1',
+          name: 'Pizza Palace',
+          category: 'Italian',
+          description: 'Authentic Italian pizzas made with fresh ingredients',
+          rating: 4.8,
+          reviews: 342,
+          deliveryTime: '25-35 mins',
+          deliveryFee: 'Free',
+          image: '🍕'
+        },
+        {
+          _id: '2',
+          name: 'Burger Barn',
+          category: 'American',
+          description: 'Juicy burgers and crispy fries made fresh daily',
+          rating: 4.6,
+          reviews: 285,
+          deliveryTime: '20-30 mins',
+          deliveryFee: '$2.50',
+          image: '🍔'
+        },
+        {
+          _id: '3',
+          name: 'Sushi Supreme',
+          category: 'Japanese',
+          description: 'Fresh sushi rolls and authentic Japanese cuisine',
+          rating: 4.9,
+          reviews: 412,
+          deliveryTime: '30-40 mins',
+          deliveryFee: '$3.00',
+          image: '🍣'
+        },
+        {
+          _id: '4',
+          name: 'Taco Fiesta',
+          category: 'Mexican',
+          description: 'Delicious tacos, burritos and authentic Mexican food',
+          rating: 4.7,
+          reviews: 198,
+          deliveryTime: '15-25 mins',
+          deliveryFee: 'Free',
+          image: '🌮'
+        }
+      ];
+    }
+
+    function renderSlideshow() {
+      const container = document.getElementById('slidesContainer');
+      const dotsContainer = document.getElementById('dotsContainer');
+
+      container.innerHTML = '';
+      dotsContainer.innerHTML = '';
+
+      shops.forEach((shop, idx) => {
+        const slide = document.createElement('div');
+        slide.className = `slide ${idx === 0 ? 'active' : ''}`;
+        slide.innerHTML = `
+          <div class="slide-content">
+            <div class="slide-image">
+              <div class="slide-image-placeholder">${shop.image || '🏪'}</div>
+            </div>
+            <div class="slide-info">
+              <div class="slide-rating">
+                <span class="stars">★★★★★</span>
+                <span>${shop.rating || 4.5} (${shop.reviews || 100} reviews)</span>
+              </div>
+              <h2 class="slide-title">${shop.name}</h2>
+              <p class="slide-category">${shop.category || 'Restaurant'}</p>
+              <p class="slide-description">${shop.description || 'Delicious food delivered fresh'}</p>
+              <div class="slide-stats">
+                <div class="stat">
+                  <span class="stat-value">⏱️ ${shop.deliveryTime || '20-30 mins'}</span>
+                  <span>Delivery Time</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value">🚚 ${shop.deliveryFee || 'Free'}</span>
+                  <span>Delivery Fee</span>
+                </div>
+              </div>
+              <button class="slide-button" onclick="window.location.href='/register.html'">
+                Order Now →
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(slide);
+
+        const dot = document.createElement('span');
+        dot.className = `dot ${idx === 0 ? 'active' : ''}`;
+        dot.onclick = () => goToSlide(idx);
+        dotsContainer.appendChild(dot);
+      });
+    }
+
+    function changeSlide(n) {
+      goToSlide(currentSlide + n);
+    }
+
+    function goToSlide(n) {
+      const slides = document.querySelectorAll('.slide');
+      const dots = document.querySelectorAll('.dot');
+
+      if (n >= slides.length) currentSlide = 0;
+      else if (n < 0) currentSlide = slides.length - 1;
+      else currentSlide = n;
+
+      slides.forEach((s, i) => s.classList.toggle('active', i === currentSlide));
+      dots.forEach((d, i) => d.classList.toggle('active', i === currentSlide));
+    }
+
+    function startAutoSlide() {
+      setInterval(() => goToSlide(currentSlide + 1), 5000);
+    }
+
+    window.addEventListener('DOMContentLoaded', loadShops);
+  </script>
+</body>
+</html>
