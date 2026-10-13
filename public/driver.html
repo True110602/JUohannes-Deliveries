@@ -420,6 +420,177 @@
     }
   });
 </script>
+  <!-- START SUPPORT WIDGET -->
+<style>
+    /* Floating Button Style */
+    #support-widget-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background-color: #667eea;
+        color: white;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 9999;
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s;
+    }
+    #support-widget-btn:hover { transform: scale(1.1); }
+
+    /* Chat Window Style */
+    #support-chat-window {
+        position: fixed;
+        bottom: 90px;
+        right: 20px;
+        width: 350px;
+        height: 450px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        display: none; /* Hidden by default */
+        flex-direction: column;
+        z-index: 9999;
+        font-family: sans-serif;
+        overflow: hidden;
+    }
+    #chat-header {
+        background: #667eea;
+        color: white;
+        padding: 15px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+    }
+    #chat-messages {
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .msg { padding: 8px 12px; border-radius: 10px; max-width: 80%; font-size: 14px; }
+    .msg.me { align-self: flex-end; background: #eef2ff; color: #333; }
+    .msg.them { align-self: flex-start; background: #f1f1f1; color: #333; }
+    #chat-input-area {
+        padding: 15px;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 10px;
+    }
+    #chat-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; }
+</style>
+
+<button id="support-widget-btn" onclick="toggleSupportChat()">💬</button>
+
+<div id="support-chat-window">
+    <div id="chat-header">
+        <span>Support Chat</span>
+        <span style="cursor:pointer" onclick="toggleSupportChat()">✖</span>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Type a message...">
+        <button onclick="sendSupportMessage()" style="background:#667eea; color:white; border:none; padding:5px 15px; border-radius:5px; cursor:pointer">Send</button>
+    </div>
+</div>
+
+<script>
+    let supportSocket = null;
+    let currentChatId = null;
+
+    async function toggleSupportChat() {
+        const window = document.getElementById('support-chat-window');
+        const isHidden = window.style.display === 'none' || window.style.display === '';
+        
+        if (isHidden) {
+            window.style.display = 'flex';
+            await initSupportConnection();
+        } else {
+            window.style.display = 'none';
+        }
+    }
+
+    async function initSupportConnection() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            alert("Please login to use support.");
+            toggleSupportChat();
+            return;
+        }
+
+        // 1. Connect to the /support namespace
+        if (!supportSocket) {
+            supportSocket = io('/support', { auth: { token } });
+        }
+
+        // 2. Create or Get a chat session from the API
+        try {
+            const res = await fetch('/api/support/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ message: "Hello, I need help!" })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentChatId = data.chatId;
+                
+                // Join the socket room
+                const user = JSON.parse(atob(token.split('.')[1])); // Decode JWT to get email/role
+                supportSocket.emit('join_chat', { 
+                    chatId: currentChatId, 
+                    userId: user.id, 
+                    email: user.email, 
+                    role: user.role 
+                });
+            }
+        } catch (err) {
+            console.error("Support connection error:", err);
+        }
+
+        // Listen for messages
+        supportSocket.on('new_message', (msg) => {
+            appendMessage(msg.senderName, msg.message, msg.senderId === 'me' ? 'me' : 'them');
+        });
+    }
+
+    function sendSupportMessage() {
+        const input = document.getElementById('chat-input');
+        const msg = input.value.trim();
+        if (!msg || !currentChatId) return;
+
+        const user = JSON.parse(atob(localStorage.getItem('token').split('.')[1]));
+
+        supportSocket.emit('send_message', {
+            chatId: currentChatId,
+            senderId: user.id,
+            senderName: user.email,
+            senderRole: user.role,
+            message: msg
+        });
+
+        appendMessage('Me', msg, 'me');
+        input.value = '';
+    }
+
+    function appendMessage(name, text, type) {
+        const container = document.getElementById('chat-messages');
+        const div = document.createElement('div');
+        div.className = `msg ${type}`;
+        div.innerHTML = `<strong>${name}:</strong> ${text}`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+</script>
+<!-- END SUPPORT WIDGET -->
+
 
 </body>
 </html>
