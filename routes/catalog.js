@@ -4,19 +4,19 @@ const CatalogItem = require('../models/CatalogItem');
 const User = require('../models/user');
 const { requireRole } = require('../middleware/auth');
 
-// GET the list of shops (merchants who have at least one catalog item) -
-// public, used by the customer app to let people pick which shop's menu
-// to browse instead of being dumped into one giant combined list.
+// GET the list of shops
 router.get('/shops', async (req, res) => {
   try {
     const merchantEmails = await CatalogItem.distinct('merchantEmail');
     if (!merchantEmails.length) return res.json([]);
 
-    // Only show shops belonging to approved merchants - a merchant who
-    // hasn't been approved yet shouldn't be visible to customers even if
-    // they've added items.
-    const merchants = await User.find({ email: { $in: merchantEmails }, approved: true })
-      .select('email shopName profilePicUrl address isOpen');
+    // CRITICAL: Only fetch users who are merchants AND approved
+    const merchants = await User.find({ 
+      email: { $in: merchantEmails }, 
+      role: 'merchant', 
+      approved: true 
+    }).select('email shopName profilePicUrl address isOpen');
+
     const merchantByEmail = new Map(merchants.map(m => [m.email, m]));
     const approvedEmails = merchants.map(m => m.email);
 
@@ -33,9 +33,6 @@ router.get('/shops', async (req, res) => {
         shopName: (merchant && merchant.shopName) || email,
         profilePicUrl: (merchant && merchant.profilePicUrl) || '',
         address: (merchant && merchant.address) || '',
-        // Merchants can temporarily close without being un-approved or
-        // deleting their catalog - customers still see the shop, but
-        // can't order from it right now.
         isOpen: merchant ? merchant.isOpen !== false : true,
         itemCount: countByEmail.get(email) || 0
       };
@@ -48,9 +45,7 @@ router.get('/shops', async (req, res) => {
   }
 });
 
-// GET catalog - public. With no query, every merchant's items (kept for
-// backwards compatibility). With ?merchant=<email>, just that shop's menu -
-// this is what the customer app uses once a shop has been picked.
+// GET catalog
 router.get('/', async (req, res) => {
   try {
     const filter = {};
@@ -59,11 +54,14 @@ router.get('/', async (req, res) => {
     }
     const items = await CatalogItem.find(filter).sort({ createdAt: -1 });
 
-    // Filter out any items belonging to a merchant who isn't approved yet
-    // (covers the case where an admin later un-approves someone, or a
-    // customer somehow reaches an unapproved shop's URL directly).
+    // CRITICAL: Double-verify that the merchants owning these items are approved
     const emails = [...new Set(items.map(i => i.merchantEmail))];
-    const approvedMerchants = await User.find({ email: { $in: emails }, approved: true }).select('email');
+    const approvedMerchants = await User.find({ 
+      email: { $in: emails }, 
+      role: 'merchant', 
+      approved: true 
+    }).select('email');
+    
     const approvedSet = new Set(approvedMerchants.map(m => m.email));
 
     res.json(items.filter(i => approvedSet.has(i.merchantEmail)));
@@ -72,12 +70,9 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST new catalog item - merchant only, stamped with their own email
+// POST new catalog item - merchant only
 router.post('/', ...requireRole('merchant'), async (req, res) => {
   try {
-    // Merchants can prepare their menu while awaiting approval - items
-    // just won't be visible to customers yet, since the GET routes above
-    // already filter out anything from an unapproved merchant.
     const { name, price, description, imageUrl, optionGroups } = req.body;
 
     const newItem = new CatalogItem({
@@ -96,7 +91,6 @@ router.post('/', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
-// PATCH toggle stock status - merchant only, and only for their own items
 router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
   try {
     const item = await CatalogItem.findById(req.params.id);
@@ -104,7 +98,6 @@ router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
     if (item.merchantEmail !== req.user.email) {
       return res.status(403).json({ message: 'You can only manage your own catalog items.' });
     }
-
     item.inStock = !item.inStock;
     await item.save();
     res.json(item);
@@ -113,7 +106,6 @@ router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
-// PATCH edit an item - merchant only, and only their own
 router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
   try {
     const item = await CatalogItem.findById(req.params.id);
@@ -121,14 +113,12 @@ router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
     if (item.merchantEmail !== req.user.email) {
       return res.status(403).json({ message: 'You can only manage your own catalog items.' });
     }
-
     const { name, price, description, imageUrl, optionGroups } = req.body;
     if (name !== undefined) item.name = name;
     if (price !== undefined) item.price = price;
     if (description !== undefined) item.description = description;
     if (imageUrl !== undefined) item.imageUrl = imageUrl;
     if (optionGroups !== undefined) item.optionGroups = optionGroups;
-
     await item.save();
     res.json(item);
   } catch (err) {
@@ -136,8 +126,6 @@ router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
   }
 });
 
-// DELETE an item - merchant only, and only their own. Past orders keep
-// their own copy of the name/price (lineItems), so history is unaffected.
 router.delete('/:id', ...requireRole('merchant'), async (req, res) => {
   try {
     const item = await CatalogItem.findById(req.params.id);
