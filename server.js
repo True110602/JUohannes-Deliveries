@@ -34,22 +34,13 @@ const setupSupportSocket = require('./socket-support-events');
 const { notifyUser, notifyRole } = require('./utils/notify');
 const { broadcastOrders } = require('./utils/realtime');
 
-// ==========================================
-// 1. ENVIRONMENT VALIDATION
-// ==========================================
 function validateEnv() {
   const required = ['MONGODB_URI', 'JWT_SECRET']; 
   const optional = ['RESEND_API_KEY', 'PAYNOW_INTEGRATION_ID', 'PAYNOW_INTEGRATION_KEY'];
-  
   const missing = required.filter(key => !process.env[key]);
   if (missing.length > 0) {
     console.error('CRITICAL ERROR: Missing required env vars: ' + missing.join(', '));
     process.exit(1);
-  }
-  
-  const missingOpt = optional.filter(key => !process.env[key]);
-  if (missingOpt.length > 0) {
-    console.warn('Warning: Optional features disabled due to missing: ' + missingOpt.join(', '));
   }
 }
 validateEnv();
@@ -58,22 +49,15 @@ const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-// --- SOCKET.IO ---
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 app.set('io', io);
 
-// ==========================================
-// 2. SECURITY MIDDLEWARE
-// ==========================================
-app.use(helmet({
-  contentSecurityPolicy: false, 
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
 
-// --- RATE LIMITING ---
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { success: false, message: 'Too many login attempts.' }, standardHeaders: true, legacyHeaders: false });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { success: false, message: 'Too many accounts created.' }, standardHeaders: true, legacyHeaders: false });
 const passwordResetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, message: { success: false, message: 'Too many reset attempts.' }, standardHeaders: true, legacyHeaders: false });
@@ -90,7 +74,6 @@ app.use('/uploads', (req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- MONGOOSE DATABASE SETUP ---
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => { console.error('MongoDB Error:', err); process.exit(1); });
@@ -116,20 +99,10 @@ mongoose.connection.once('open', () => {
   }
 });
 
-// ==========================================
-// 3. RESEND (Email Configuration)
-// ==========================================
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const EMAIL_CONFIGURED = !!resendClient;
 const EMAIL_FROM = process.env.RESEND_FROM_EMAIL || 'noreply@johannes.com';
 
-if (EMAIL_CONFIGURED) {
-  console.log('Resend configured - password reset emails can be sent');
-} else {
-  console.warn('RESEND_API_KEY not set - password reset emails cannot be sent.');
-}
-
-// --- PAYNOW (EcoCash) ---
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 let paynow = null;
 if (process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY) {
@@ -141,9 +114,6 @@ app.set('paynow', paynow);
 app.set('emailFrom', EMAIL_FROM);
 app.set('emailConfigured', EMAIL_CONFIGURED);
 
-// ==========================================
-// 4. ZOD VALIDATION SCHEMAS
-// ==========================================
 const RegisterSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   email: z.string().trim().toLowerCase().pipe(z.string().email("Invalid email format")).or(z.string().min(1)),
@@ -170,7 +140,6 @@ const ResetPasswordSchema = z.object({
   newPassword: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-// --- HELPERS ---
 async function generateUniqueReferralCode(seed) {
   const base = (seed || 'USER').replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() || 'USER';
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -189,8 +158,6 @@ function getRedirectUrlByRole(role) {
     default: return '/customer.html';
   }
 }
-
-// --- API ROUTES ---
 
 app.get('/api/map-config', (req, res) => {
   const maptilerKey = process.env.MAPTILER_API_KEY;
@@ -222,18 +189,24 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(validated.password, 10);
+    
+    // BUSINESS RULE: Only customers are approved automatically. 
+    // Merchants and Drivers must be approved by admin.
+    const isAutoApproved = (validated.role === 'customer');
+
     const newUser = await User.create({
       ...validated,
       password: hashedPassword,
-      approved: validated.role !== 'merchant',
+      approved: isAutoApproved, 
       referralCode: await generateUniqueReferralCode(validated.name),
       referredBy: referredByEmail
     });
 
-    if (validated.role === 'merchant') {
+    // Notify admin for both Merchants AND Drivers
+    if (validated.role === 'merchant' || validated.role === 'driver') {
       notifyRole(io, User, 'admin', {
-        title: 'New merchant awaiting approval',
-        message: `${newUser.name} (${newUser.email}) registered as a merchant.`
+        title: `New ${validated.role} awaiting approval`,
+        message: `${newUser.name} (${newUser.email}) just registered and needs approval to be visible.`
       });
     }
 
@@ -276,13 +249,7 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
         from: EMAIL_FROM,
         to: validated.email,
         subject: 'Password Reset Verification Code - Johannes Deliveries',
-        html: `
-          <h2 style="font-family: sans-serif;">Password Reset Request</h2>
-          <p style="font-family: sans-serif;">Your password reset code is:</p>
-          <h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3>
-          <p style="font-family: sans-serif;"><strong>This code will expire in 15 minutes.</strong></p>
-          <p style="font-family: sans-serif;">If you did not request a password reset, you can ignore this email.</p>
-        `
+        html: `<h2 style="font-family: sans-serif;">Password Reset Request</h2><p style="font-family: sans-serif;">Your password reset code is:</p><h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3><p style="font-family: sans-serif;"><strong>This code will expire in 15 minutes.</strong></p>`
       });
     }
     res.json({ success: true, message: 'If registered, a code has been sent.' });
