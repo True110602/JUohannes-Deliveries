@@ -27,7 +27,8 @@
     "socket.io": "^4.8.3",
     "helmet": "^8.0.0",
     "express-rate-limit": "^7.4.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
