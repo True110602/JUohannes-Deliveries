@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs'); // switched from native bcrypt - pure JS, no compile step that can fail on deploy
 const jwt = require('jsonwebtoken');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const { Paynow } = require('paynow');
 const path = require('path');
 const helmet = require('helmet');
@@ -116,15 +116,15 @@ const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
   console.error('------------------------------------------------------------');
   console.error('CRITICAL ERROR: MONGODB_URI is not set.');
-  console.error('Set it in your environment variables (Render \u2192 Environment).');
+  console.error('Set it in your environment variables (Render → Environment).');
   console.error('------------------------------------------------------------');
   process.exit(1);
 }
 
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('\u2705 Connected to MongoDB'))
+  .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => {
-    console.error('\u274c MongoDB Connection Error:', err);
+    console.error('❌ MongoDB Connection Error:', err);
     process.exit(1);
   });
 
@@ -155,17 +155,18 @@ mongoose.connection.once('open', () => {
   }
 });
 
-// --- SENDGRID (password reset emails) ---
-// Set SENDGRID_API_KEY on Render (Environment tab). SENDGRID_FROM_EMAIL must be an address
-// you've verified in SendGrid. Visit https://sendgrid.com to set up an account.
-const EMAIL_CONFIGURED = !!process.env.SENDGRID_API_KEY;
-const EMAIL_FROM = process.env.SENDGRID_FROM_EMAIL || 'noreply@juohannes.com';
+// --- RESEND (password reset emails) ---
+// Set RESEND_API_KEY on Render (Environment tab). RESEND_FROM_EMAIL must be an address
+// you've verified in Resend. Visit https://resend.com to set up an account.
+const EMAIL_CONFIGURED = !!process.env.RESEND_API_KEY;
+const EMAIL_FROM = process.env.RESEND_FROM_EMAIL || 'noreply@juohannes.com';
+let resend = null;
 
 if (EMAIL_CONFIGURED) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('\u2705 SendGrid configured - password reset emails can be sent');
+  resend = new Resend(process.env.RESEND_API_KEY);
+  console.log('✅ Resend configured - password reset emails can be sent');
 } else {
-  console.warn('SENDGRID_API_KEY not set - password reset emails cannot be sent.');
+  console.warn('RESEND_API_KEY not set - password reset emails cannot be sent.');
 }
 
 // --- PAYNOW (EcoCash payments) ---
@@ -414,10 +415,10 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
       user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
       await user.save();
 
-      // Send email using SendGrid
+      // Send email using Resend
       const msg = {
-        to: email,
         from: EMAIL_FROM,
+        to: email,
         subject: 'Password Reset Verification Code - JUohannes Deliveries',
         html: `
           <h2>Password Reset Request</h2>
@@ -427,12 +428,12 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
           <p>If you did not request a password reset, you can ignore this email.</p>
         `
       };
-      await sgMail.send(msg);
+      await resend.emails.send(msg);
     }
 
     res.json({ success: true, message: 'If that email is registered, a verification code has been sent.' });
   } catch (err) {
-    // Log the SendGrid error server-side (e.g. invalid API key or an
+    // Log the Resend error server-side (e.g. invalid API key or an
     // unverified sender domain) - it only shows up here, in the Render logs.
     console.error('Password Reset Request Error:', err.message || err);
     res.status(500).json({ success: false, message: 'Failed to send reset code. Check the server logs for the exact mail error.' });
@@ -606,5 +607,5 @@ io.on('connection', async (socket) => {
 // START SERVER
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`\ud83d\ude80 Johannes Deliveries server running on port ${PORT}`);
+  console.log(`🚀 Johannes Deliveries server running on port ${PORT}`);
 });
