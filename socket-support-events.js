@@ -3,8 +3,6 @@ const SupportChat = require('./models/SupportChat');
 
 module.exports = function setupSupportSocket(io) {
   const supportNamespace = io.of('/support');
-  
-  // Track active calls: { socketId: { chatId, partnerId } }
   const activeCalls = new Map();
 
   supportNamespace.on('connection', (socket) => {
@@ -36,30 +34,21 @@ module.exports = function setupSupportSocket(io) {
       } catch (err) { socket.emit('error', { message: 'Failed to send message' }); }
     });
 
-    // ==========================================
-    // WebRTC Call Signaling with State Tracking
-    // ==========================================
-
     socket.on('call_initiate', (data) => {
       const { chatId, callerId, callerName, callType } = data;
-      // Track that this socket is now in a call
       activeCalls.set(socket.id, { chatId, partnerId: callerId });
-      
-      supportNamespace.to(`chat_${chatId}`).emit('incoming_call', {
-        callerId, callerName, callType, timestamp: new Date()
-      });
+      supportNamespace.to(`chat_${chatId}`).emit('incoming_call', { callerId, callerName, callType, timestamp: new Date() });
     });
 
     socket.on('call_answered', (data) => {
       const { chatId, answeredBy } = data;
-      // We don't know the caller's socket ID easily here, so we just mark this one as active
       activeCalls.set(socket.id, { chatId, partnerId: answeredBy });
       supportNamespace.to(`chat_${chatId}`).emit('call_connected', { answeredBy, message: 'Call connected' });
     });
 
     socket.on('call_ended', (data) => {
       const { chatId, duration } = data;
-      activeCalls.delete(socket.id); // Remove from tracking
+      activeCalls.delete(socket.id);
       supportNamespace.to(`chat_${chatId}`).emit('call_ended', { duration, message: 'Call ended' });
     });
 
@@ -80,17 +69,12 @@ module.exports = function setupSupportSocket(io) {
       supportNamespace.to(`chat_${data.chatId}`).emit('user_left', { email: data.email });
     });
 
-    // CRITICAL: Handle abrupt disconnects
     socket.on('disconnect', () => {
       const call = activeCalls.get(socket.id);
       if (call) {
-        // If they were in a call, tell the other side the call dropped
-        supportNamespace.to(`chat_${call.chatId}`).emit('call_rejected', { 
-          reason: 'User disconnected unexpectedly' 
-        });
+        supportNamespace.to(`chat_${call.chatId}`).emit('call_rejected', { reason: 'User disconnected unexpectedly' });
         activeCalls.delete(socket.id);
       }
-      console.log('👤 Support user disconnected:', socket.id);
     });
   });
 };
