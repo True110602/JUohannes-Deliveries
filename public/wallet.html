@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wallet - JUohannes Deliveries</title>
+  <title>Wallet - JUohannes Logistics Hub</title>
   <link rel="stylesheet" href="/css/menu.css">
   <link rel="stylesheet" href="/css/pages.css">
 </head>
@@ -11,11 +11,11 @@
 
 <main class="main-content">
   <h1 class="page-title">Wallet 💳</h1>
-  <p class="page-sub">Your referral credit, spending and payment history.</p>
+  <p class="page-sub">Your referral credit, spending and payment history for all logistics orders.</p>
   <div class="stat-grid" id="stats"></div>
   <div class="card">
     <h2>🎁 Refer a friend</h2>
-    <p style="margin:0 0 12px;color:#666;font-size:14px">Share your code. When a friend signs up with it and gets their first delivery, you earn credit that comes off a future order — and they get a discount on their first order.</p>
+    <p style="margin:0 0 12px;color:#666;font-size:14px">Share your code. When a friend signs up and gets their first delivery, you earn credit!</p>
     <div class="toolbar">
       <input type="text" id="code" readonly class="grow" style="font-weight:700;letter-spacing:2px;font-size:18px;max-width:260px">
       <button class="btn" id="copy">Copy code</button>
@@ -33,10 +33,8 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
-
 document.addEventListener('DOMContentLoaded', async () => {
   if (!JD.guard('customer')) return;
-
   try {
     const [ref, orders] = await Promise.all([
       JD.api('/api/account/referral').catch(() => null),
@@ -61,11 +59,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (ref && ref.referredCount) note.push(ref.referredCount + ' friend' + (ref.referredCount === 1 ? '' : 's') + ' joined with your code.');
     document.getElementById('referredNote').textContent = note.join(' ');
 
-    document.getElementById('copy').onclick = async () => {
-      try { await navigator.clipboard.writeText(codeEl.value); JD.toast('Code copied'); } catch (e) { codeEl.select(); JD.toast('Press Ctrl+C to copy'); }
-    };
+    document.getElementById('copy').onclick = async () => { try { await navigator.clipboard.writeText(codeEl.value); JD.toast('Code copied'); } catch (e) { codeEl.select(); JD.toast('Press Ctrl+C to copy'); } };
     document.getElementById('share').onclick = async () => {
-      const text = `Join me on JUohannes Deliveries — use my code ${codeEl.value} when you sign up.`;
+      const text = `Join me on JUohannes Logistics Hub — use my code ${codeEl.value} when you sign up.`;
       if (navigator.share) { try { await navigator.share({ text }); } catch (e) {} }
       else { try { await navigator.clipboard.writeText(text); JD.toast('Invite message copied'); } catch (e) { JD.toast(text); } }
     };
@@ -73,14 +69,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const h = document.getElementById('history');
     h.innerHTML = list.length ? JD.table([
       { h: 'Date', f: o => JD.date(o.createdAt) },
-      { h: 'Order', f: o => JD.esc((o.lineItems && o.lineItems[0] && o.lineItems[0].name) || o.item || 'Order') + (o.lineItems && o.lineItems.length > 1 ? ` +${o.lineItems.length - 1}` : '') },
+      { h: 'Order', f: o => JD.esc((o.lineItems && o.lineItems[0] && o.lineItems[0].name) || o.item || 'Order') },
       { h: 'Method', f: o => JD.esc(o.paymentMethod || 'Cash') },
       { h: 'Status', f: o => JD.badge(o.status) },
       { h: 'Total', f: o => '<b>' + JD.money(total(o)) + '</b>' }
     ], list) : JD.empty('🧾', 'No payments yet.');
   } catch (e) { JD.fail(e, document.getElementById('history')); }
 });
-
 </script>
 </body>
 </html>
