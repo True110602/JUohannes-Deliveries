@@ -101,7 +101,10 @@ mongoose.connection.once('open', () => {
 
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const EMAIL_CONFIGURED = !!resendClient;
-const EMAIL_FROM = process.env.RESEND_FROM_EMAIL || 'noreply@johannes.com';
+// Must be an address on a domain verified in Resend. Until then, Resend's test
+// sender only delivers to the email address your Resend account was created with.
+// Either EMAIL_FROM or RESEND_FROM_EMAIL may be set in Render's Environment tab.
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'Johannes Deliveries <onboarding@resend.dev>';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 let paynow = null;
@@ -245,16 +248,19 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
       user.resetCodeExpires = Date.now() + 15 * 60 * 1000;
       await user.save();
 
-      await resendClient.emails.send({
+      // The Resend SDK returns { data, error } instead of throwing, so check it.
+      const { error: sendError } = await resendClient.emails.send({
         from: EMAIL_FROM,
         to: validated.email,
         subject: 'Password Reset Verification Code - Johannes Deliveries',
         html: `<h2 style="font-family: sans-serif;">Password Reset Request</h2><p style="font-family: sans-serif;">Your password reset code is:</p><h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3><p style="font-family: sans-serif;"><strong>This code will expire in 15 minutes.</strong></p>`
       });
+      if (sendError) console.error('Resend rejected the password reset email:', sendError);
     }
     res.json({ success: true, message: 'If registered, a code has been sent.' });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ success: false, message: err.errors[0].message });
+    console.error('Password reset request error:', err);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
