@@ -36,7 +36,7 @@ function jdBuildMenuItems(session) {
       ['Account', [['wallet.html', '💳', 'Wallet'], ['account.html', '⚙️', 'Settings']]]
     ],
     merchant: [
-      ['Main', [['merchant.html', '📊', 'Dashboard'], ['products.html', '🍽️', 'Products'], ['spreadsheet-import.html', '📤', 'Bulk Import'], ['merchant-orders.html', '📦', 'Orders'], ['reports.html', '📈', 'Reports'], ['shop-location.html', '📍', 'Shop Map']]],
+      ['Main', [['merchant.html', '📊', 'Dashboard'], ['products.html', '🍽️', 'Products'], ['spreadsheet-import.html', '📤', 'Bulk Import'], ['merchant-orders.html', '📦', 'Orders'], ['reports.html', '📈', 'Reports'], ['adverts.html', '📣', 'Adverts'], ['shop-location.html', '📍', 'Shop Map']]],
       ['Account', [['account.html', '⚙️', 'Settings']]]
     ],
     driver: [
@@ -45,7 +45,7 @@ function jdBuildMenuItems(session) {
     ],
     admin: [
       ['Main', [['admin.html', '📊', 'Dashboard'], ['admin.html#map', '🗺️', 'Live Map']]],
-      ['Management', [['admin-users.html', '👥', 'Users'], ['admin-merchants.html', '🏪', 'Merchants'], ['admin-drivers.html', '🚗', 'Drivers'], ['admin-orders.html', '📦', 'Orders']]],
+      ['Management', [['admin-users.html', '👥', 'Users'], ['admin-merchants.html', '🏪', 'Merchants'], ['admin-drivers.html', '🚗', 'Drivers'], ['admin-orders.html', '📦', 'Orders'], ['adverts.html', '📣', 'Adverts']]],
       ['Analytics', [['admin-reports.html', '📈', 'Reports'], ['admin-logs.html', '📋', 'Logs']]],
       ['Account', [['account.html', '⚙️', 'Settings']]]
     ]
