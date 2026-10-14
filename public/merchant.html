@@ -175,6 +175,7 @@
 
 </main>
 
+<script src="/js/config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script src="/js/menu.js"></script>
 <script>
@@ -263,7 +264,7 @@
     async function initSupportConnection() {
         const token = localStorage.getItem('token');
         if (!token) { alert("Please login to use support."); toggleSupportChat(); return; }
-        if (!supportSocket) supportSocket = io('/support', { auth: { token } });
+        if (!supportSocket) supportSocket = io((window.API_BASE || '') + '/support', { auth: { token } });
         try {
             const res = await fetch('/api/support/start', {
                 method: 'POST',
