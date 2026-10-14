@@ -29,6 +29,8 @@ const supportRoutes = require('./routes/support');
 const supportChatRoutes = require('./routes/support-chat');
 const notificationRoutes = require('./routes/notifications');
 const spreadsheetRoutes = require('./routes/spreadsheet');
+const mediaRoutes = require('./routes/media');
+const advertRoutes = require('./routes/adverts');
 const { customerRouter: customerStatsRoutes, driverRouter: driverStatsRoutes } = require('./routes/stats');
 const setupSupportSocket = require('./socket-support-events');
 const { notifyUser, notifyRole } = require('./utils/notify');
@@ -70,6 +72,7 @@ app.use('/uploads', (req, res, next) => {
   if (!/\.(jpe?g|png|webp|gif)$/i.test(req.path)) return res.status(404).end();
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // the Android app loads images from another origin
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -307,6 +310,8 @@ app.use('/api/support', supportRoutes);
 app.use('/api/support-chat', supportChatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/spreadsheet', spreadsheetRoutes);
+app.use('/api/media', mediaRoutes);
+app.use('/api/adverts', advertRoutes);
 app.use('/api/customer', customerStatsRoutes);
 app.use('/api/driver', driverStatsRoutes);
 
