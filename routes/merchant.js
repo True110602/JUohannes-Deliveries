@@ -30,7 +30,7 @@ router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
       update.shopCategory = shopCategory;
     }
     if (profilePicUrl !== undefined) {
-      if (typeof profilePicUrl !== 'string' || (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/)/i.test(profilePicUrl))) {
+      if (typeof profilePicUrl !== 'string' || (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/|\/api\/media\/)/i.test(profilePicUrl))) {
         return res.status(400).json({ success: false, message: 'Profile picture must be an uploaded image or an http(s) link.' });
       }
       update.profilePicUrl = profilePicUrl;
