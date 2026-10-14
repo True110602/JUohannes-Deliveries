@@ -192,6 +192,7 @@
 
 </main>
 
+<script src="/js/config.js"></script>
 <script src="/js/ui-helpers.js"></script>
 <script src="/js/menu.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -228,7 +229,7 @@
   }
 
   function connectSocket() {
-    socket = io({ auth: { token: localStorage.getItem('token') } });
+    socket = io(window.API_BASE || undefined, { auth: { token: localStorage.getItem('token') } });
     socket.on('connect', () => { console.log('✅ Connected to server'); });
     socket.on('driver_position', (data) => {
       if (map && driverMarker) {
