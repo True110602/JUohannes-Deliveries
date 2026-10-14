@@ -66,6 +66,12 @@
     .next { right: 0; } .prev { left: 0; }
     .footer { background: #333; color: white; padding: 40px 30px; text-align: center; }
 
+    .slide.slide-ad { padding: 0; min-height: 0; background: #111; }
+    .slide-ad img { width: 100%; height: 400px; object-fit: cover; display: block; }
+    .slide-ad-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 24px 20px; background: linear-gradient(transparent, rgba(0,0,0,0.75)); color: white; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .slide-ad-caption .ad-title { font-size: 22px; font-weight: bold; }
+    .slide-ad-caption .ad-tag { display: inline-block; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; background: rgba(255,255,255,.25); padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
+    @media (max-width: 768px) { .slide-ad img { height: 260px; } }
     @media (max-width: 768px) { .hero h1 { font-size: 32px; } .slide-content { flex-direction: column; } }
   </style>
 </head>
@@ -147,23 +153,59 @@
     let loadFailed = false;
     const TYPE_LABEL = { Food: 'Food & Meals', Grocery: 'Groceries', Pharmacy: 'Pharmacy', Hardware: 'Tools & Parts', Other: 'Other' };
 
+    let adverts = [];
+
+    async function getJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }
+
     async function loadShops() {
-      try {
-        const response = await fetch('/api/catalog/shops');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
-        shops = Array.isArray(data) ? data : [];
-        loadFailed = false;
-      } catch (error) { console.error('Could not load vendors:', error); shops = []; loadFailed = true; }
+      const [shopsRes, adsRes] = await Promise.allSettled([getJson('/api/catalog/shops'), getJson('/api/adverts')]);
+      shops = shopsRes.status === 'fulfilled' && Array.isArray(shopsRes.value) ? shopsRes.value : [];
+      adverts = adsRes.status === 'fulfilled' && Array.isArray(adsRes.value) ? adsRes.value : [];
+      loadFailed = shopsRes.status === 'rejected' && adsRes.status === 'rejected';
+      if (loadFailed) console.error('Could not load vendors:', shopsRes.reason);
       renderSlides();
     }
 
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
+    const assetUrl = (u) => (typeof u === 'string' && u.startsWith('/')) ? (window.API_BASE || '') + u : u;
+    const shopLink = (category) => '/restaurants.html' + (category && category !== 'Other' ? '?category=' + encodeURIComponent(category) : '');
+
     function renderSlides() {
       const container = document.getElementById('slidesContainer');
       const arrows = document.querySelectorAll('.prev, .next');
-      if (!shops.length) {
+
+      // Adverts first, then every approved shop.
+      const slides = [];
+      adverts.forEach(a => {
+        slides.push('<div class="slide slide-ad"><img src="' + esc(assetUrl(a.imageUrl)) + '" alt="' + esc(a.title || 'Advert') + '">' +
+          '<div class="slide-ad-caption"><div><span class="ad-tag">Advert</span>' +
+          (a.title ? '<div class="ad-title">' + esc(a.title) + '</div>' : '') + '</div>' +
+          (a.merchantEmail ? '<button class="slide-button" onclick="window.location.href=\'' + shopLink(a.shopCategory) + '\'">Visit ' + esc(a.shopName || 'shop') + '</button>' : '') +
+          '</div></div>');
+      });
+      shops.forEach(s => {
+        const pic = /^(https?:\/\/|\/)/.test(s.profilePicUrl || '')
+          ? '<img src="' + esc(assetUrl(s.profilePicUrl)) + '" alt="" style="width:100%;height:300px;object-fit:cover;border-radius:8px;">'
+          : '<div class="slide-image-placeholder">🏪</div>';
+        const status = s.isOpen === false ? 'Currently closed' : 'Open now';
+        const count = !s.itemCount ? 'Menu coming soon' : (s.itemCount === 1 ? '1 item' : s.itemCount + ' items');
+        const type = TYPE_LABEL[s.shopCategory] || 'Vendor';
+        slides.push('<div class="slide"><div class="slide-content">' +
+          '<div style="flex:1;">' + pic + '</div>' +
+          '<div class="slide-info">' +
+            '<div class="slide-title">' + esc(s.shopName) + '</div>' +
+            '<div class="slide-category">' + esc(type) + ' · ' + status + ' · ' + count + '</div>' +
+            '<p class="slide-description">' + esc(s.address || 'Browse the full menu and order for delivery.') + '</p>' +
+            '<button class="slide-button" onclick="window.location.href=\'' + shopLink(s.shopCategory) + '\'">Browse Shops</button>' +
+          '</div></div></div>');
+      });
+
+      if (!slides.length) {
         arrows.forEach(a => { a.style.display = 'none'; });
         container.innerHTML = '<div class="slide active"><div class="slide-content"><div class="slide-info">' +
           '<div class="slide-title">' + (loadFailed ? 'Could not load vendors' : 'Vendors coming soon') + '</div>' +
@@ -171,24 +213,9 @@
           (loadFailed ? '<button class="slide-button" onclick="loadShops()">Try again</button>' : '') + '</div></div></div>';
         return;
       }
-      arrows.forEach(a => { a.style.display = ''; });
-      container.innerHTML = shops.map((s, i) => {
-        const pic = /^(https?:\/\/|\/)/.test(s.profilePicUrl || '')
-          ? '<img src="' + esc(s.profilePicUrl.startsWith('/') ? (window.API_BASE || '') + s.profilePicUrl : s.profilePicUrl) + '" alt="" style="width:100%;height:300px;object-fit:cover;border-radius:8px;">'
-          : '<div class="slide-image-placeholder">🏪</div>';
-        const status = s.isOpen === false ? 'Currently closed' : 'Open now';
-        const count = !s.itemCount ? 'Menu coming soon' : (s.itemCount === 1 ? '1 item' : s.itemCount + ' items');
-        const type = TYPE_LABEL[s.shopCategory] || 'Vendor';
-        const link = '/restaurants.html' + (s.shopCategory && s.shopCategory !== 'Other' ? '?category=' + encodeURIComponent(s.shopCategory) : '');
-        return '<div class="slide' + (i === 0 ? ' active' : '') + '"><div class="slide-content">' +
-          '<div style="flex:1;">' + pic + '</div>' +
-          '<div class="slide-info">' +
-            '<div class="slide-title">' + esc(s.shopName) + '</div>' +
-            '<div class="slide-category">' + esc(type) + ' · ' + status + ' · ' + count + '</div>' +
-            '<p class="slide-description">' + esc(s.address || 'Browse the full menu and order for delivery.') + '</p>' +
-            '<button class="slide-button" onclick="window.location.href=\'' + link + '\'">Browse Shops</button>' +
-          '</div></div></div>';
-      }).join('');
+      arrows.forEach(a => { a.style.display = slides.length > 1 ? '' : 'none'; });
+      container.innerHTML = slides.join('');
+      container.querySelector('.slide').classList.add('active');
       currentSlide = 0;
     }
 
