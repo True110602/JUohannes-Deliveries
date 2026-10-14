@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rows = merchants.filter(m => tab === 'approved' ? m.approved : !m.approved);
     document.getElementById('list').innerHTML = rows.length ? JD.table([
       { h: 'Shop', f: m => `<b>${JD.esc(m.shopName || m.name || '—')}</b>` },
+      { h: 'Type', f: m => JD.esc(({ Food: 'Food & Meals', Grocery: 'Groceries', Pharmacy: 'Pharmacy', Hardware: 'Tools & Parts', Other: 'Other' })[m.shopCategory] || 'Not chosen') },
       { h: 'Owner', f: m => JD.esc(m.name || '—') },
       { h: 'Email', f: m => JD.esc(m.email) },
       { h: 'Registered', f: m => JD.date(m.createdAt) },
