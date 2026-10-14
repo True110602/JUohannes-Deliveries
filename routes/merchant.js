@@ -10,7 +10,7 @@ const upload = require('../middleware/upload');
 // details, persisted server-side so they follow the account across devices.
 router.get('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('email shopName profilePicUrl bankDetails shopLat shopLng isOpen');
+    const user = await User.findById(req.user.id).select('email shopName shopCategory profilePicUrl bankDetails shopLat shopLng isOpen');
     if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
     res.json({ success: true, profile: user });
   } catch (err) {
@@ -20,9 +20,15 @@ router.get('/profile', ...requireRole('merchant'), async (req, res) => {
 
 router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
   try {
-    const { shopName, profilePicUrl, bankName, accountName, accountNumber, shopLat, shopLng, isOpen } = req.body;
+    const { shopName, shopCategory, profilePicUrl, bankName, accountName, accountNumber, shopLat, shopLng, isOpen } = req.body;
     const update = {};
-    if (shopName !== undefined) update.shopName = shopName;
+    if (shopName !== undefined) update.shopName = String(shopName).trim().slice(0, 80);
+    if (shopCategory !== undefined) {
+      if (!['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other'].includes(shopCategory)) {
+        return res.status(400).json({ success: false, message: 'Please choose a valid vendor type.' });
+      }
+      update.shopCategory = shopCategory;
+    }
     if (profilePicUrl !== undefined) {
       if (typeof profilePicUrl !== 'string' || (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/)/i.test(profilePicUrl))) {
         return res.status(400).json({ success: false, message: 'Profile picture must be an uploaded image or an http(s) link.' });
@@ -45,7 +51,7 @@ router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
     }
     if (typeof isOpen === 'boolean') update.isOpen = isOpen;
 
-    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email shopName profilePicUrl bankDetails shopLat shopLng isOpen');
+    const user = await User.findByIdAndUpdate(req.user.id, update, { new: true }).select('email shopName shopCategory profilePicUrl bankDetails shopLat shopLng isOpen');
     res.json({ success: true, profile: user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
