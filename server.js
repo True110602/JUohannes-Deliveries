@@ -124,6 +124,7 @@ const RegisterSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   address: z.string().trim().min(1, "Address is required"),
   role: z.enum(['customer', 'driver', 'merchant']).catch('customer'),
+  shopCategory: z.enum(['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other']).optional().catch(undefined),
   paymentMethod: z.string().optional().default('Cash'),
   referralCode: z.string().optional().nullable(),
 });
@@ -182,6 +183,9 @@ app.get('/api/map-config', (req, res) => {
 app.post('/api/register', registerLimiter, async (req, res) => {
   try {
     const validated = RegisterSchema.parse(req.body);
+    if (validated.role === 'merchant' && !validated.shopCategory) {
+      return res.status(400).json({ success: false, message: 'Please choose your vendor type.' });
+    }
     const existingUser = await User.findOne({ email: validated.email });
     if (existingUser) return res.status(400).json({ success: false, message: 'Email is already registered.' });
 
@@ -199,6 +203,8 @@ app.post('/api/register', registerLimiter, async (req, res) => {
 
     const newUser = await User.create({
       ...validated,
+      shopCategory: validated.role === 'merchant' ? validated.shopCategory : '',
+      shopName: validated.role === 'merchant' ? validated.name : '',
       password: hashedPassword,
       approved: isAutoApproved, 
       referralCode: await generateUniqueReferralCode(validated.name),
