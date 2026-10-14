@@ -186,6 +186,18 @@
         </select>
       </div>
 
+      <div class="form-group" id="vendorTypeGroup" style="display:none">
+        <label for="shopCategory">Vendor Type *</label>
+        <select id="shopCategory">
+          <option value="">Select what you sell…</option>
+          <option value="Food">Food &amp; Meals (restaurant, takeaway)</option>
+          <option value="Grocery">Groceries</option>
+          <option value="Pharmacy">Pharmacy</option>
+          <option value="Hardware">Tools &amp; Parts</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
       <div class="form-group">
         <label for="password">Password *</label>
         <input type="password" id="password" placeholder="At least 6 characters" required minlength="6">
@@ -211,9 +223,10 @@
     </div>
   </div>
 
-  <script>
+  <script src="/js/config.js"></script>
+<script>
     // Get the API base URL - works for both localhost and Render deployment
-    const API_BASE_URL = window.location.origin;
+    const API_BASE_URL = window.API_BASE || window.location.origin;
     
     console.log('API Base URL:', API_BASE_URL);
     console.log('Using endpoint:', API_BASE_URL + '/api/register');
@@ -240,6 +253,7 @@
           phone: document.getElementById('phone').value.trim(),
           address: document.getElementById('address').value.trim(),
           role: document.getElementById('role').value,
+          shopCategory: document.getElementById('role').value === 'merchant' ? document.getElementById('shopCategory').value : undefined,
           password: document.getElementById('password').value,
           referralCode: document.getElementById('referralCode').value.trim() || undefined
         };
@@ -288,6 +302,16 @@
     // Log page load for debugging
     console.log('Register page loaded');
     console.log('Current URL:', window.location.href);
+  </script>
+  <script>
+    // Merchants must say what kind of vendor they are, so customers find them in the right place.
+    (function () {
+      const role = document.getElementById('role');
+      const group = document.getElementById('vendorTypeGroup');
+      const type = document.getElementById('shopCategory');
+      function sync() { const isMerchant = role.value === 'merchant'; group.style.display = isMerchant ? '' : 'none'; type.required = isMerchant; }
+      role.addEventListener('change', sync); sync();
+    })();
   </script>
   <script src="/js/menu.js"></script>
 </body>
