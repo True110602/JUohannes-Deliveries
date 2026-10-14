@@ -121,6 +121,7 @@ router.post('/import', ...merchantOnly, receiveFile, async (req, res) => {
           price: item.price,
           description: item.description,
           imageUrl: item.imageUrl,
+          category: item.category,
           inStock: item.inStock,
           optionGroups: item.optionGroups
         });
