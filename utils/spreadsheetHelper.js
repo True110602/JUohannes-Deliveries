@@ -3,6 +3,9 @@ const XLSX = require('xlsx');
 
 const MAX_ROWS = 2000;
 
+// Same list the Products page offers. Anything else (or blank) becomes 'Other'.
+const CATEGORIES = ['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other'];
+
 function parseExcelFile(fileBuffer) {
   let data;
   try {
@@ -65,12 +68,16 @@ function validateAndNormalizeData(rawData) {
       return;
     }
 
+    const rawCategory = row.Category ? String(row.Category).trim().toLowerCase() : '';
+    const category = CATEGORIES.find(c => c.toLowerCase() === rawCategory) || 'Other';
+
     validRows.push({
       rowNumber: rowNum,
       name,
       price: Math.round(price * 100) / 100,
       description: row.Description ? String(row.Description).trim().slice(0, 500) : '',
       imageUrl,
+      category,
       inStock: parseBoolean(row.InStock, true),
       // Same shape the CatalogItem model and the ordering code use.
       optionGroups: row.Options ? parseOptionGroups(row.Options) : []
@@ -112,7 +119,8 @@ function createTemplateExcel() {
       Description: 'Grilled chicken with mayo and lettuce',
       ImageUrl: 'https://example.com/burger.jpg',
       InStock: 'yes',
-      Options: 'Size:Small,Large|Sauce:Spicy,Mild'
+      Options: 'Size:Small,Large|Sauce:Spicy,Mild',
+      Category: 'Food'
     },
     {
       Name: 'Coca Cola 330ml',
@@ -120,7 +128,8 @@ function createTemplateExcel() {
       Description: '',
       ImageUrl: '',
       InStock: 'yes',
-      Options: ''
+      Options: '',
+      Category: 'Grocery'
     }
   ];
 
@@ -131,7 +140,8 @@ function createTemplateExcel() {
     { wch: 30 },
     { wch: 30 },
     { wch: 10 },
-    { wch: 30 }
+    { wch: 30 },
+    { wch: 12 }
   ];
 
   const workbook = XLSX.utils.book_new();
