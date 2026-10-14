@@ -52,7 +52,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div style="text-align:right"><div class="order-price">${JD.money(share)}</div>${JD.badge(o.status)}</div>
         </div>
         <div class="order-body">
-          // Find the draw() function and update the lineItems mapping:
 ${lines.map(l => `<div>📦 ${l.quantity}× ${JD.esc(l.name)}${Object.keys(l.selectedOptions || {}).length ? ' <span class="tile-meta">(' + Object.entries(l.selectedOptions).map(([k, v]) => JD.esc(k) + ': ' + JD.esc(v)).join(', ') + ')</span>' : ''} — ${JD.money(l.price * l.quantity)}</div>`).join('')}
           <div>📍 ${JD.esc(o.dropoff)}</div>
           <div>🚗 ${o.assignedDriver ? JD.esc(o.assignedDriver) : 'No driver assigned yet'}</div>
