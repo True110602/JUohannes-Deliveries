@@ -13,6 +13,10 @@ const userSchema = new mongoose.Schema({
   // Merchant-only: the storefront name shown to customers browsing shops.
   // Falls back to the merchant's email on the frontend when left blank.
   shopName: { type: String, default: '' },
+  // Merchant-only: what kind of vendor this is. Decides which customer-facing
+  // tile (Food, Groceries, Pharmacy, Tools & Parts) the shop is listed under.
+  // '' = not chosen yet (older accounts) - those fall back to their items' category.
+  shopCategory: { type: String, enum: ['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other', ''], default: '' },
   // Merchant-only: where the shop physically is, used to calculate the
   // real pickup->dropoff distance the delivery fee is based on. Null
   // until the merchant sets it on the map in merchant.html; orders from
