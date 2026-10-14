@@ -25,6 +25,10 @@
     .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: 0.4s; border-radius: 50%; }
     input:checked + .toggle-slider { background-color: #667eea; }
     input:checked + .toggle-slider:before { transform: translateX(24px); }
+      .btn-secondary:hover { background: #e0e0e0; }
+    .btn-danger:hover { background: #c0392b; }
+    .settings-section { margin-bottom: 30px; }
+    .settings-title { font-size: 18px; font-weight: 700; color: #333; margin-bottom: 15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -50,3 +54,192 @@
       <div class="sidebar-user-avatar" id="userAvatar">US</div>
       <div class="sidebar-user-info">
         <h3 id="userName">User</h3>
+        <p id="userEmail">user@example.com</p>
+      </div>
+    </div>
+  </div>
+
+  <ul class="sidebar-menu">
+    <li class="menu-section-title">NAVIGATION</li>
+    <li class="menu-item">
+      <a href="customer.html" class="menu-link">
+        <span class="menu-icon">🏠</span> Dashboard
+      </a>
+    </li>
+    <li class="menu-item">
+      <a href="account.html" class="menu-link active">
+        <span class="menu-icon">⚙️</span> Settings
+      </a>
+    </li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <a href="login.html" class="sidebar-footer-link logout">
+      <span>🚪</span> Logout
+    </a>
+  </div>
+
+</aside>
+
+<div class="sidebar-overlay"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+  
+  <h1 class="page-title">Account Settings ⚙️</h1>
+
+  <!-- Profile Settings -->
+  <div class="card">
+    <h2 class="card-title">👤 Profile Information</h2>
+    <form id="profileForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input type="text" id="firstName" class="form-input" placeholder="John">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input type="text" id="lastName" class="form-input" placeholder="Doe">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="email" class="form-input" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input type="tel" id="phone" class="form-input" placeholder="+263 712 345 678">
+      </div>
+      <button type="submit" class="btn">Save Changes</button>
+    </form>
+  </div>
+
+  <!-- Security Settings -->
+  <div class="card">
+    <h2 class="card-title">🔒 Security</h2>
+    <form id="passwordForm">
+      <div class="form-group">
+        <label class="form-label">Current Password</label>
+        <input type="password" id="currentPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input type="password" id="newPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input type="password" id="confirmPassword" class="form-input" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn">Update Password</button>
+    </form>
+  </div>
+
+  <!-- Preferences -->
+  <div class="card">
+    <h2 class="card-title">📬 Preferences</h2>
+    <div class="settings-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #f0f0f0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">Email Notifications</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive updates via email</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" checked id="emailNotif">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #f0f0f0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">SMS Notifications</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive updates via SMS</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="smsNotif">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+        <div>
+          <div style="font-weight: 600; color: #333;">Newsletter</div>
+          <div style="font-size: 13px; color: #999; margin-top: 5px;">Receive promotional emails</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="newsletter">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="card" style="border: 2px solid #f5e6e6;">
+    <h2 class="card-title" style="color: #e74c3c;">⚠️ Danger Zone</h2>
+    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">These actions cannot be undone.</p>
+    <button onclick="if(confirm('Are you sure? This will permanently delete your account.')) { deleteAccount(); }" class="btn btn-danger">Delete Account</button>
+  </div>
+
+</main>
+
+<script src="/js/menu.js"></script>
+<script>
+  // ACCOUNT SETTINGS SCRIPT
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadUserInfo();
+    loadPreferences();
+  });
+
+  function loadUserInfo() {
+    const email = localStorage.getItem('userEmail') || 'user@example.com';
+    const name = email.split('@')[0];
+    const initials = name.substring(0, 2).toUpperCase();
+    
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userEmail').textContent = email;
+    document.getElementById('userAvatar').textContent = initials;
+    document.getElementById('email').value = email;
+  }
+
+  function loadPreferences() {
+    document.getElementById('emailNotif').checked = localStorage.getItem('emailNotif') !== 'false';
+    document.getElementById('smsNotif').checked = localStorage.getItem('smsNotif') === 'true';
+    document.getElementById('newsletter').checked = localStorage.getItem('newsletter') === 'true';
+  }
+
+  document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    alert('Profile updated!');
+    // Handle profile update
+  });
+
+  document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const current = document.getElementById('currentPassword').value;
+    const newPwd = document.getElementById('newPassword').value;
+    const confirm = document.getElementById('confirmPassword').value;
+    
+    if (newPwd !== confirm) {
+      alert('Passwords do not match');
+      return;
+    }
+    
+    alert('Password updated!');
+    document.getElementById('passwordForm').reset();
+  });
+
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'emailNotif') localStorage.setItem('emailNotif', e.target.checked);
+    if (e.target.id === 'smsNotif') localStorage.setItem('smsNotif', e.target.checked);
+    if (e.target.id === 'newsletter') localStorage.setItem('newsletter', e.target.checked);
+  });
+
+  function deleteAccount() {
+    localStorage.clear();
+    window.location.href = 'login.html';
+  }
+</script>
+
+</body>
+</html>
