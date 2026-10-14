@@ -27,6 +27,22 @@
     <h2>Open for orders</h2>
     <label style="display:flex;gap:10px;align-items:center;font-size:14px"><input type="checkbox" id="isOpen" style="width:auto"> Customers can order from my shop right now</label>
   </div>
+  <div class="card">
+    <h2>Shop details</h2>
+    <div id="typeNotice"></div>
+    <label class="tile-meta" for="shopName">Shop name</label>
+    <input id="shopName" class="form-input" maxlength="80" placeholder="e.g. Xai Xai Restaurant" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;margin:4px 0 12px">
+    <label class="tile-meta" for="shopCategory">Vendor type — customers find your shop under this</label>
+    <select id="shopCategory" class="form-input" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;margin:4px 0 12px">
+      <option value="">Select what you sell…</option>
+      <option value="Food">Food &amp; Meals (restaurant, takeaway)</option>
+      <option value="Grocery">Groceries</option>
+      <option value="Pharmacy">Pharmacy</option>
+      <option value="Hardware">Tools &amp; Parts</option>
+      <option value="Other">Other</option>
+    </select>
+    <button class="btn" id="saveDetails">💾 Save details</button>
+  </div>
 </main>
 
 <script src="/js/config.js"></script>
@@ -80,6 +96,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('save').disabled = false;
   });
 
+  $('saveDetails').addEventListener('click', async () => {
+    const shopName = $('shopName').value.trim();
+    const shopCategory = $('shopCategory').value;
+    if (!shopCategory) return JD.toast('Please choose your vendor type');
+    $('saveDetails').disabled = true;
+    try {
+      await JD.api('/api/merchant/profile', { method: 'PATCH', body: { shopName, shopCategory } });
+      $('typeNotice').innerHTML = '';
+      JD.toast('Shop details saved');
+    } catch (e) { JD.toast(e.message); }
+    $('saveDetails').disabled = false;
+  });
+
   $('isOpen').addEventListener('change', async () => {
     const want = $('isOpen').checked;
     try { await JD.api('/api/merchant/profile', { method: 'PATCH', body: { isOpen: want } }); JD.toast(want ? 'Shop is open' : 'Shop is closed'); }
@@ -89,6 +118,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const { profile } = await JD.api('/api/merchant/profile');
     $('isOpen').checked = profile.isOpen !== false;
+    $('shopName').value = profile.shopName || '';
+    $('shopCategory').value = profile.shopCategory || '';
+    if (!profile.shopCategory) $('typeNotice').innerHTML = '<div class="notice">Choose your vendor type so customers can find your shop in the right place.</div>';
     if (typeof profile.shopLat === 'number' && typeof profile.shopLng === 'number') {
       saved = { lat: profile.shopLat, lng: profile.shopLng };
       place(profile.shopLat, profile.shopLng, 16);
