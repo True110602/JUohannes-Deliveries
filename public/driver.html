@@ -134,6 +134,7 @@
   </div>
 </main>
 
+<script src="/js/config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 <script src="/js/ui-helpers.js"></script>
@@ -205,7 +206,7 @@
   }
 
   function connectSocket() {
-    socket = io({ auth: { token: localStorage.getItem('token') } });
+    socket = io(window.API_BASE || undefined, { auth: { token: localStorage.getItem('token') } });
     socket.on('connect', () => { updateLocationStatus('Location tracking active', true); sendLocationUpdate(lastLocation.lat, lastLocation.lng); });
     socket.on('new_order', () => { document.getElementById('notifBadge').style.display = 'inline-block'; });
   }
@@ -262,7 +263,7 @@
     async function initSupportConnection() {
         const token = localStorage.getItem('token');
         if (!token) { alert("Please login"); toggleSupportChat(); return; }
-        if (!supportSocket) supportSocket = io('/support', { auth: { token } });
+        if (!supportSocket) supportSocket = io((window.API_BASE || '') + '/support', { auth: { token } });
         try {
             const res = await fetch('/api/support/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ message: "Hello!" }) });
             const data = await res.json();
