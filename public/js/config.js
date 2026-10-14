@@ -41,3 +41,16 @@ async function authFetch(url, options = {}) {
 
   return response;
 }
+
+// Inside the Android app the pages are served from the phone itself, so a bare
+// '/api/...' or '/uploads/...' address would hit the app's own files (and come
+// back as a web page instead of data). Point those at the real server.
+(function () {
+  if (window.__jdFetchPatched || !window.API_BASE || typeof window.fetch !== 'function') return;
+  window.__jdFetchPatched = true;
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    if (typeof input === 'string' && /^\/(api|uploads)\//.test(input)) input = window.API_BASE + input;
+    return nativeFetch(input, init);
+  };
+})();
