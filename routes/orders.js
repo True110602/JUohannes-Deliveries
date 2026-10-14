@@ -283,6 +283,67 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
+// --- Parcel delivery (door-to-door, no shop involved) ---
+// Flat fee by parcel size - these match the estimate shown on parcel.html.
+// Paid in cash to the driver; the driver keeps the whole fee.
+const PARCEL_FEES = { small: 2.00, medium: 4.00, large: 7.00 };
+
+router.post('/parcel', authenticateToken, async (req, res) => {
+  try {
+    const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+    const pickupAddress = clean(req.body.pickupAddress, 300);
+    const dropoffAddress = clean(req.body.dropoffAddress, 300);
+    const pickupContact = clean(req.body.pickupContact, 120);
+    const dropoffContact = clean(req.body.dropoffContact, 120);
+    const parcelDetails = clean(req.body.parcelDetails, 500);
+    const size = Object.prototype.hasOwnProperty.call(PARCEL_FEES, req.body.size) ? req.body.size : 'small';
+
+    if (!pickupAddress || !dropoffAddress || !parcelDetails) {
+      return res.status(400).json({ success: false, message: 'Pickup address, drop-off address and a parcel description are required.' });
+    }
+
+    const customer = await User.findById(req.user.id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    const deliveryFee = PARCEL_FEES[size];
+    const order = new Order({
+      customerName: customer.name,
+      customerEmail: req.user.email,
+      orderType: 'parcel',
+      pickup: pickupAddress,
+      dropoff: dropoffAddress,
+      pickupContact: pickupContact || null,
+      dropoffContact: dropoffContact || null,
+      parcelDetails,
+      parcelSize: size,
+      item: `Parcel (${size})`,
+      lineItems: [],
+      amount: 0,
+      deliveryFee,
+      paymentMethod: 'Cash',
+      paymentStatus: 'n/a',
+      driverCommission: deliveryFee,
+      platformCommission: 0
+    });
+    await order.save();
+
+    const io = req.app.get('io');
+    await broadcastOrders(io, order);
+    notifyRole(io, User, 'admin', {
+      title: 'New parcel request',
+      message: `${order.customerName} requested a ${size} parcel delivery ($${deliveryFee.toFixed(2)}) - needs a driver assigned.`,
+      relatedOrderId: order._id
+    });
+
+    res.status(201).json({ success: true, order });
+  } catch (err) {
+    console.error('Create parcel order error:', err);
+    res.status(500).json({ success: false, message: 'Server error creating parcel request' });
+  }
+});
+
 router.get('/', ...requireRole('admin'), async (req, res) => {
   try {
     const allOrders = await Order.find().sort({ createdAt: -1 });
