@@ -65,6 +65,7 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
+  const TYPE_LABEL = { Food: 'Food & Meals', Grocery: 'Groceries', Pharmacy: 'Pharmacy', Hardware: 'Tools & Parts', Other: 'Other' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   const me = JD.guard('customer');
@@ -96,11 +97,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     $('shops').innerHTML = '<div class="tile-grid">' + rows.map(s => `
       <div class="tile">
-        <div class="tile-img" style="${s.profilePicUrl ? `background-image:url('${JD.esc(s.profilePicUrl)}')` : ''}">${s.profilePicUrl ? '' : '🏪'}</div>
+        <div class="tile-img" style="${s.profilePicUrl ? `background-image:url('${JD.esc(JD.asset(s.profilePicUrl))}')` : ''}">${s.profilePicUrl ? '' : '🏪'}</div>
         <div class="tile-body">
           <div style="display:flex;justify-content:space-between;gap:8px"><span class="tile-name">${JD.esc(s.shopName)}</span>
             <button class="fav" data-fav="${JD.esc(s.merchantEmail)}" title="Favorite">${favs.includes(s.merchantEmail) ? '❤️' : '🤍'}</button></div>
-          <div class="tile-meta">${s.itemCount} items · ${s.isOpen ? '🟢 Open' : '🔴 Closed'}</div>
+          <div class="tile-meta">${JD.esc(TYPE_LABEL[s.shopCategory] || 'Vendor')} · ${s.itemCount ? s.itemCount + ' items' : 'Menu coming soon'} · ${s.isOpen ? '🟢 Open' : '🔴 Closed'}</div>
           ${s.address ? `<div class="tile-meta">📍 ${JD.esc(s.address)}</div>` : ''}
           <div class="tile-actions"><button class="btn btn-sm" data-open="${JD.esc(s.merchantEmail)}">View Catalog</button></div>
         </div>
@@ -115,8 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       let url = '/api/catalog/shops';
       if (category) url += `?category=${encodeURIComponent(category)}`;
 
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await JD.api(url);
       shops = Array.isArray(data) ? data : (data.shops || []);
       drawShops();
     } catch (e) { JD.fail(e, $('shops')); }
