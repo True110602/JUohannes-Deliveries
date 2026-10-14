@@ -30,6 +30,15 @@
   <div class="card">
     <h2>Shop details</h2>
     <div id="typeNotice"></div>
+    <label class="tile-meta">Shop picture — shown on the home page slideshow and in the shop list</label>
+    <div style="display:flex;gap:14px;align-items:center;margin:6px 0 16px;flex-wrap:wrap">
+      <div id="picPreview" style="width:96px;height:96px;border-radius:12px;background:#e8e8ee center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:36px;flex:none">🏪</div>
+      <div>
+        <input type="file" id="picFile" accept="image/jpeg,image/png,image/webp,image/gif">
+        <div class="tile-meta" style="margin-top:6px">JPG, PNG, WEBP or GIF, up to 3 MB. A square or wide photo works best.</div>
+        <button class="btn btn-secondary btn-sm" id="removePic" style="margin-top:6px;display:none">Remove picture</button>
+      </div>
+    </div>
     <label class="tile-meta" for="shopName">Shop name</label>
     <input id="shopName" class="form-input" maxlength="80" placeholder="e.g. Xai Xai Restaurant" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;margin:4px 0 12px">
     <label class="tile-meta" for="shopCategory">Vendor type — customers find your shop under this</label>
@@ -96,6 +105,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('save').disabled = false;
   });
 
+  function setPic(url) {
+    const box = $('picPreview');
+    if (url) { box.style.backgroundImage = `url('${JD.asset(url).replace(/'/g, '%27')}')`; box.textContent = ''; $('removePic').style.display = ''; }
+    else { box.style.backgroundImage = ''; box.textContent = '🏪'; $('removePic').style.display = 'none'; }
+  }
+
+  $('picFile').addEventListener('change', async () => {
+    const file = $('picFile').files[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) { $('picFile').value = ''; return JD.toast('That image is too large (maximum 3 MB)'); }
+    $('picFile').disabled = true;
+    try {
+      const fd = new FormData(); fd.append('image', file);
+      const up = await JD.api('/api/media', { method: 'POST', form: fd });
+      await JD.api('/api/merchant/profile', { method: 'PATCH', body: { profilePicUrl: up.url } });
+      setPic(up.url);
+      JD.toast('Shop picture saved');
+    } catch (e) { JD.toast(e.message); }
+    $('picFile').value = ''; $('picFile').disabled = false;
+  });
+
+  $('removePic').addEventListener('click', async () => {
+    try { await JD.api('/api/merchant/profile', { method: 'PATCH', body: { profilePicUrl: '' } }); setPic(''); JD.toast('Picture removed'); }
+    catch (e) { JD.toast(e.message); }
+  });
+
   $('saveDetails').addEventListener('click', async () => {
     const shopName = $('shopName').value.trim();
     const shopCategory = $('shopCategory').value;
@@ -119,6 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { profile } = await JD.api('/api/merchant/profile');
     $('isOpen').checked = profile.isOpen !== false;
     $('shopName').value = profile.shopName || '';
+    setPic(profile.profilePicUrl || '');
     $('shopCategory').value = profile.shopCategory || '';
     if (!profile.shopCategory) $('typeNotice').innerHTML = '<div class="notice">Choose your vendor type so customers can find your shop in the right place.</div>';
     if (typeof profile.shopLat === 'number' && typeof profile.shopLng === 'number') {
