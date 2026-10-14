@@ -1,185 +1,107 @@
-# 🚀 Complete Render Deployment Fix - All Files
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - JUohannes Deliveries</title>
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
 
-Your server is live on Render! Now ALL your HTML files need to use the correct API base URL.
+<main class="main-content">
+  <h1 class="page-title">Reports 📊</h1>
+  <p class="page-sub">Sales, best sellers and customer reviews for your shop.</p>
 
-## 📋 Files to Replace
+  <div class="stat-grid" id="stats"></div>
 
-### 🔐 Authentication Pages
-1. **public/login.html** → use **login-fixed.html**
-2. **public/register.html** → use **register-fixed.html**  
-3. **public/forgot-password.html** → use **forgot-password-fixed.html**
+  <div class="card"><h2>Sales — last 7 days</h2><div id="chart"><div class="empty">Loading…</div></div></div>
+  <div class="card"><h2>Best sellers</h2><div id="top"><div class="empty">Loading…</div></div></div>
+  <div class="card" id="reviews"><h2>Customer reviews</h2><div id="reviewList"><div class="empty">Loading…</div></div></div>
+</main>
 
-### 📊 Dashboard Pages
-4. **public/admin.html** → use the one from IMPLEMENTATION_GUIDE
-5. **public/driver.html** → use the one from IMPLEMENTATION_GUIDE
-6. **public/customer.html** → use the one from IMPLEMENTATION_GUIDE
+<script src="/js/config.js"></script>
+<script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  const me = JD.guard('merchant');
+  if (!me) return;
 
-### 🏪 Other Pages
-7. **public/merchant.html** → See "Quick Patch" below
-8. **public/account.html** → See "Quick Patch" below
+  // Only the lines that belong to this shop (an order can include several shops).
+  const mine = (o) => (o.lineItems || []).filter(l => l.merchantEmail === me.email);
+  const share = (o) => mine(o).reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.quantity) || 0), 0);
+  const startOf = (daysAgo) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - daysAgo); return d; };
 
----
+  const [ordersRes, statsRes, ratingsRes] = await Promise.allSettled([
+    JD.api('/api/merchant/orders'),
+    JD.api('/api/merchant/stats'),
+    JD.api('/api/orders/ratings/shop/' + encodeURIComponent(me.email))
+  ]);
 
-## ⚡ Quick Installation
+  // ---- Sales (delivered orders only) ----
+  if (ordersRes.status === 'fulfilled') {
+    const delivered = ordersRes.value
+      .filter(o => o.status === 'delivered')
+      .map(o => ({ o, when: new Date(o.deliveryPhotoAt || o.updatedAt || o.createdAt), total: share(o) }));
+    const sum = (rows) => rows.reduce((s, r) => s + r.total, 0);
+    const today = delivered.filter(r => r.when >= startOf(0));
+    const week = delivered.filter(r => r.when >= startOf(6));
+    const month = delivered.filter(r => r.when >= startOf(29));
 
-### Option A: Automatic (Recommended)
-Run this in your project directory:
+    const take = statsRes.status === 'fulfilled' && statsRes.value && statsRes.value.success ? statsRes.value : null;
+    const rating = ratingsRes.status === 'fulfilled' && ratingsRes.value ? ratingsRes.value : null;
 
-```bash
-# 1. Copy fixed auth files
-cp login-fixed.html public/login.html
-cp register-fixed.html public/register.html
-cp forgot-password-fixed.html public/forgot-password.html
+    document.getElementById('stats').innerHTML =
+      JD.statCard('Today', JD.money(sum(today)), today.length + ' orders') +
+      JD.statCard('Last 7 days', JD.money(sum(week)), week.length + ' orders') +
+      JD.statCard('Last 30 days', JD.money(sum(month)), month.length + ' orders') +
+      JD.statCard('All time sales', JD.money(sum(delivered)), delivered.length + ' delivered') +
+      (take ? JD.statCard('Your take-home', JD.money(take.totalRevenue), 'After platform commission') : '') +
+      JD.statCard('Rating', rating && rating.average ? rating.average.toFixed(1) + ' ⭐' : '—', rating ? rating.count + ' ratings' : 'No ratings yet');
 
-# 2. Copy dashboard files
-cp admin.html public/admin.html
-cp driver.html public/driver.html
-cp customer.html public/customer.html
+    const days = JD.lastDays(7);
+    const byDay = Object.fromEntries(days.map(d => [d.key, 0]));
+    delivered.forEach(r => { const k = r.when.toDateString(); if (k in byDay) byDay[k] += r.total; });
+    document.getElementById('chart').innerHTML = JD.bars(days.map(d => ({
+      label: d.label, value: byDay[d.key], text: byDay[d.key] ? '$' + byDay[d.key].toFixed(0) : ''
+    })));
 
-# 3. Commit and push
-git add public/
-git commit -m "Fix all HTML files for Render deployment"
-git push
-```
+    const items = {};
+    delivered.forEach(r => mine(r.o).forEach(l => {
+      const k = l.name || 'Item';
+      items[k] = items[k] || { name: k, qty: 0, sales: 0 };
+      items[k].qty += Number(l.quantity) || 0;
+      items[k].sales += (Number(l.price) || 0) * (Number(l.quantity) || 0);
+    }));
+    const top = Object.values(items).sort((a, b) => b.qty - a.qty).slice(0, 10);
+    document.getElementById('top').innerHTML = top.length
+      ? JD.table([
+          { h: 'Item', f: i => JD.esc(i.name) },
+          { h: 'Sold', f: i => i.qty },
+          { h: 'Sales', f: i => JD.money(i.sales) }
+        ], top)
+      : JD.empty('🍽️', 'No delivered orders yet.');
+  } else {
+    JD.fail(ordersRes.reason, document.getElementById('chart'));
+    document.getElementById('top').innerHTML = '';
+    document.getElementById('stats').innerHTML = '';
+  }
 
-Render will auto-redeploy! ✅
-
----
-
-## 🔧 Quick Patch for Other Pages
-
-If you have **merchant.html** or **account.html**, find and replace:
-
-**Find:**
-```javascript
-fetch('/api/
-fetch('/merchant/
-fetch('/account/
-```
-
-**Replace with:**
-```javascript
-fetch(window.location.origin + '/api/
-fetch(window.location.origin + '/merchant/
-fetch(window.location.origin + '/account/
-```
-
-**Or use this at the top of the script:**
-```javascript
-const API_BASE_URL = window.location.origin;
-```
-
-Then replace all fetches with:
-```javascript
-fetch(API_BASE_URL + '/api/endpoint')
-```
-
----
-
-## ✨ What Each Fix Does
-
-| File | Fix |
-|------|-----|
-| login-fixed.html | Login works on Render |
-| register-fixed.html | Registration works on Render |
-| forgot-password-fixed.html | Password reset works on Render |
-| admin.html | Admin map & stats on Render |
-| driver.html | Driver GPS tracking on Render |
-| customer.html | Customer delivery tracking on Render |
-
----
-
-## ✅ Testing After Fix
-
-After pushing to GitHub (Render auto-deploys):
-
-1. **Test Registration:**
-   - Go to: `https://juohannes-deliveries-2.onrender.com/register.html`
-   - Fill form and submit
-   - Should work without "connection error" ✅
-
-2. **Test Login:**
-   - Go to: `https://juohannes-deliveries-2.onrender.com/login.html`
-   - Use credentials: admin / 1234
-   - Should redirect to admin.html ✅
-
-3. **Test Password Reset:**
-   - Go to: `https://juohannes-deliveries-2.onrender.com/forgot-password.html`
-   - Enter email and get code
-   - Should work ✅
-
-4. **Test Dashboards:**
-   - Admin should show map with drivers
-   - Driver should show location tracking
-   - Customer should show delivery tracking ✅
-
----
-
-## 🆘 Troubleshooting
-
-### "Still getting connection error"
-1. Check browser console (F12 → Console)
-2. Look for the error message
-3. Make sure you replaced the file correctly
-4. Restart your browser (Ctrl+Shift+Delete clear cache)
-
-### "API calls still go to localhost"
-1. Did you save the file?
-2. Did you push to GitHub?
-3. Did Render redeploy? (Check Render dashboard)
-4. Try hard refresh (Ctrl+F5)
-
-### "Map not showing drivers"
-1. Ensure at least one driver is logged in
-2. Wait 30+ seconds for location update
-3. Check admin is logged in with valid token
-4. See IMPLEMENTATION_GUIDE.md for full troubleshooting
-
----
-
-## 📊 Summary of Changes
-
-**Before (❌ doesn't work):**
-```javascript
-fetch('/api/login')  // fails on Render
-```
-
-**After (✅ works everywhere):**
-```javascript
-fetch(window.location.origin + '/api/login')  // works locally AND on Render
-```
-
----
-
-## 🎯 What Gets Fixed
-
-✅ Registration page works on Render
-✅ Login page works on Render  
-✅ Password reset works on Render
-✅ Admin map shows real drivers
-✅ Driver GPS tracking works
-✅ Customer delivery tracking works
-✅ All stats display correctly
-✅ All real-time updates via Socket.io
-
-**Your app is now fully functional on production!** 🚀
-
----
-
-## 📁 File Checklist
-
-- [ ] login-fixed.html → copied to public/login.html
-- [ ] register-fixed.html → copied to public/register.html
-- [ ] forgot-password-fixed.html → copied to public/forgot-password.html
-- [ ] admin.html → copied to public/admin.html
-- [ ] driver.html → copied to public/driver.html
-- [ ] customer.html → copied to public/customer.html
-- [ ] merchant.html → manually patched (if you have it)
-- [ ] account.html → manually patched (if you have it)
-- [ ] Files committed and pushed to GitHub
-- [ ] Render auto-deployment completed
-- [ ] Tested registration on Render URL ✅
-- [ ] Tested login on Render URL ✅
-- [ ] Tested password reset on Render URL ✅
-
-**All done!** 🎉
+  // ---- Reviews ----
+  const reviewEl = document.getElementById('reviewList');
+  if (ratingsRes.status === 'fulfilled' && ratingsRes.value) {
+    const reviews = ratingsRes.value.reviews || [];
+    reviewEl.innerHTML = reviews.length
+      ? reviews.map(r => `<div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+          <div>${'⭐'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))} <b>${JD.esc(r.customerName || 'Customer')}</b>
+            <span class="tile-meta"> · ${JD.date(r.createdAt)}</span></div>
+          <div style="margin-top:4px">${JD.esc(r.comment)}</div></div>`).join('')
+      : JD.empty('💬', 'No written reviews yet.');
+  } else {
+    JD.fail(ratingsRes.reason, reviewEl);
+  }
+});
+</script>
+</body>
+</html>
