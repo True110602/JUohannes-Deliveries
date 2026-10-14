@@ -38,6 +38,9 @@ const JD = {
     const res = await fetch((window.API_BASE || '') + path, { method: opts.method || 'GET', headers, body });
     let data = null;
     try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+    if (data === null && /text\/html/i.test(res.headers.get('content-type') || '')) {
+      throw new Error('The server sent a web page instead of data (HTTP ' + res.status + '). It may be restarting - please try again in a moment.');
+    }
     if (res.status === 401 || (res.status === 403 && data && /token/i.test(data.message || ''))) {
       try { localStorage.removeItem('token'); } catch (e) {}
       window.location.replace('/login.html');
@@ -48,6 +51,9 @@ const JD = {
     }
     return data;
   },
+
+  // Uploaded images are stored as '/uploads/...' - point them at the real server (needed inside the app).
+  asset(u) { return (typeof u === 'string' && u.startsWith('/') && window.API_BASE) ? window.API_BASE + u : u; },
 
   esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
