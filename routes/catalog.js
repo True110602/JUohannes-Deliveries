@@ -1,196 +1,159 @@
-// routes/spreadsheet.js
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const { requireRole } = require('../middleware/auth');
-const SpreadsheetImport = require('../models/SpreadsheetImport');
 const CatalogItem = require('../models/CatalogItem');
-const {
-  parseExcelFile,
-  validateAndNormalizeData,
-  createTemplateExcel
-} = require('../utils/spreadsheetHelper');
+const User = require('../models/user');
+const { requireRole } = require('../middleware/auth');
 
-// Memory storage for file uploads (5MB limit)
-const storage = multer.memoryStorage();
-const ALLOWED_MIME = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel',
-  'text/csv',
-  'application/csv',
-  // Some browsers / Android WebViews send spreadsheets as a generic type,
-  // so the file extension check below is what really gates the upload.
-  'application/octet-stream'
-];
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const okExt = /\.(xlsx|xls|csv)$/i.test(file.originalname || '');
-    if (okExt && ALLOWED_MIME.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
-    }
-  }
-});
+// GET the list of shops (merchants with at least one catalog item), optionally
+// filtered by ?category=Food|Grocery|Pharmacy|Hardware|Other. Public.
+const SHOP_CATEGORIES = ['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other'];
 
-// Runs multer but turns its errors (wrong type, too big) into a clean JSON
-// 400 instead of falling through to Express's default HTML error page.
-function receiveFile(req, res, next) {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ success: false, error: err.message || 'Upload failed' });
-    next();
-  });
-}
-
-// Bulk import writes into a merchant's own catalog, so merchants only.
-const merchantOnly = requireRole('merchant');
-
-// GET /api/spreadsheet/template - Download template
-router.get('/template', (req, res) => {
+router.get('/shops', async (req, res) => {
   try {
-    const buffer = createTemplateExcel();
-    res.setHeader('Content-Disposition', 'attachment; filename=product-template.xlsx');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
+    const { category } = req.query;
+    if (category && !SHOP_CATEGORIES.includes(category)) return res.json([]);
+
+    // Every approved merchant is listed (even before their menu is uploaded).
+    const merchants = await User.find({ role: 'merchant', approved: true })
+      .select('email shopName shopCategory profilePicUrl address isOpen');
+    if (!merchants.length) return res.json([]);
+
+    const emails = merchants.map(m => m.email);
+    const stats = await CatalogItem.aggregate([
+      { $match: { merchantEmail: { $in: emails } } },
+      { $group: { _id: '$merchantEmail', count: { $sum: 1 }, categories: { $addToSet: '$category' } } }
+    ]);
+    const statsByEmail = new Map(stats.map(s => [s._id, s]));
+
+    const shops = [];
+    for (const m of merchants) {
+      const st = statsByEmail.get(m.email);
+      const itemCategories = (st && st.categories) || [];
+      // The vendor type the merchant chose is what places the shop. Older accounts
+      // that haven't chosen one yet fall back to the category of their items.
+      const type = m.shopCategory || itemCategories.find(c => c && c !== 'Other') || 'Other';
+      if (category && type !== category) continue;
+      shops.push({
+        merchantEmail: m.email,
+        shopName: m.shopName || m.email,
+        shopCategory: type,
+        profilePicUrl: m.profilePicUrl || '',
+        address: m.address || '',
+        isOpen: m.isOpen !== false,
+        itemCount: st ? st.count : 0
+      });
+    }
+
+    shops.sort((a, b) => a.shopName.localeCompare(b.shopName));
+    res.json(shops);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// POST /api/spreadsheet/validate - Validate before import
-router.post('/validate', ...merchantOnly, receiveFile, async (req, res) => {
+// GET catalog - public. With no query, every merchant's items (kept for
+// backwards compatibility). With ?merchant=<email>, just that shop's menu -
+// this is what the customer app uses once a shop has been picked.
+router.get('/', async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    const filter = {};
+    if (req.query.merchant) {
+      filter.merchantEmail = req.query.merchant;
     }
+    const items = await CatalogItem.find(filter).sort({ createdAt: -1 });
 
-    const rawData = parseExcelFile(req.file.buffer);
-    const { validRows, errors } = validateAndNormalizeData(rawData);
+    // Filter out any items belonging to a merchant who isn't approved yet
+    // (covers the case where an admin later un-approves someone, or a
+    // customer somehow reaches an unapproved shop's URL directly).
+    const emails = [...new Set(items.map(i => i.merchantEmail))];
+    const approvedMerchants = await User.find({ email: { $in: emails }, approved: true }).select('email');
+    const approvedSet = new Set(approvedMerchants.map(m => m.email));
 
-    res.json({
-      success: true,
-      totalRows: rawData.length,
-      validRows: validRows.length,
-      errors,
-      preview: validRows.slice(0, 5)
-    });
+    res.json(items.filter(i => approvedSet.has(i.merchantEmail)));
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// POST /api/spreadsheet/import - Import products
-router.post('/import', ...merchantOnly, receiveFile, async (req, res) => {
+// POST new catalog item - merchant only, stamped with their own email
+router.post('/', ...requireRole('merchant'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
-    }
+    // Merchants can prepare their menu while awaiting approval - items
+    // just won't be visible to customers yet, since the GET routes above
+    // already filter out anything from an unapproved merchant.
+    const { name, price, description, imageUrl, optionGroups, category } = req.body;
 
-    const merchantEmail = req.user.email;
-    let rawData;
-    try {
-      rawData = parseExcelFile(req.file.buffer);
-    } catch (parseErr) {
-      return res.status(400).json({ success: false, error: parseErr.message });
-    }
-    const { validRows, errors } = validateAndNormalizeData(rawData);
-    if (validRows.length === 0) {
-      return res.status(400).json({ success: false, error: 'No valid products found in this file.' });
-    }
-
-    // Create import record
-    const importRecord = await SpreadsheetImport.create({
-      merchantEmail,
-      fileName: req.file.originalname,
-      totalRows: rawData.length,
-      status: 'processing',
-      importData: validRows,
-      // The history model stores errors as plain strings.
-      errors: errors.map(e => `Row ${e.row}: ${e.error}`)
+    const newItem = new CatalogItem({
+      name,
+      price,
+      description,
+      imageUrl,
+      category: category || 'Other',
+      optionGroups: optionGroups || [],
+      merchantEmail: req.user.email
     });
 
-    // Import products to catalog
-    let successCount = 0;
-    for (const item of validRows) {
-      try {
-        await CatalogItem.create({
-          merchantEmail,
-          name: item.name,
-          price: item.price,
-          description: item.description,
-          imageUrl: item.imageUrl,
-          category: item.category,
-          inStock: item.inStock,
-          optionGroups: item.optionGroups
-        });
-        successCount++;
-      } catch (err) {
-        errors.push({ row: item.rowNumber, error: `${item.name}: ${err.message}` });
-      }
-    }
-
-    // Update import record
-    importRecord.successCount = successCount;
-    importRecord.failureCount = errors.length;
-    importRecord.errors = errors.map(e => `Row ${e.row}: ${e.error}`);
-    importRecord.status = 'completed';
-    importRecord.completedAt = new Date();
-    await importRecord.save();
-
-    res.json({
-      success: true,
-      message: `Imported ${successCount} products`,
-      importId: importRecord._id,
-      stats: {
-        total: rawData.length,
-        success: successCount,
-        failed: errors.length
-      }
-    });
+    await newItem.save();
+    res.status(201).json(newItem);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 
-// GET /api/spreadsheet/history - View import history
-router.get('/history', ...merchantOnly, async (req, res) => {
+// PATCH toggle stock status - merchant only, and only for their own items
+router.patch('/:id/stock', ...requireRole('merchant'), async (req, res) => {
   try {
-    const imports = await SpreadsheetImport.find({ merchantEmail: req.user.email })
-      .sort({ createdAt: -1 })
-      .limit(20);
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
+    }
 
-    res.json({ success: true, imports });
+    item.inStock = !item.inStock;
+    await item.save();
+    res.json(item);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// GET /api/spreadsheet/history/:id - Get specific import
-router.get('/history/:id', ...merchantOnly, async (req, res) => {
+// PATCH edit an item - merchant only, and only their own
+router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
   try {
-    const importRecord = await SpreadsheetImport.findById(req.params.id);
-    if (!importRecord || importRecord.merchantEmail !== req.user.email) {
-      return res.status(404).json({ success: false, error: 'Not found' });
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
     }
-    res.json({ success: true, import: importRecord });
+
+    const { name, price, description, imageUrl, optionGroups, category } = req.body;
+    if (category !== undefined) item.category = category;
+    if (name !== undefined) item.name = name;
+    if (price !== undefined) item.price = price;
+    if (description !== undefined) item.description = description;
+    if (imageUrl !== undefined) item.imageUrl = imageUrl;
+    if (optionGroups !== undefined) item.optionGroups = optionGroups;
+
+    await item.save();
+    res.json(item);
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ message: err.message });
   }
 });
 
-// DELETE /api/spreadsheet/history/:id - Delete import history
-router.delete('/history/:id', ...merchantOnly, async (req, res) => {
+// DELETE an item - merchant only, and only their own. Past orders keep
+// their own copy of the name/price (lineItems), so history is unaffected.
+router.delete('/:id', ...requireRole('merchant'), async (req, res) => {
   try {
-    const importRecord = await SpreadsheetImport.findById(req.params.id);
-    if (!importRecord || importRecord.merchantEmail !== req.user.email) {
-      return res.status(404).json({ success: false, error: 'Not found' });
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (item.merchantEmail !== req.user.email) {
+      return res.status(403).json({ message: 'You can only manage your own catalog items.' });
     }
-    await SpreadsheetImport.deleteOne({ _id: req.params.id });
-    res.json({ success: true, message: 'Import history deleted' });
+    await item.deleteOne();
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 
