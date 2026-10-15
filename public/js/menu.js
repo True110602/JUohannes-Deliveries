@@ -315,3 +315,17 @@ function jdToast(msg) {
   clearTimeout(t._h);
   t._h = setTimeout(() => { t.style.opacity = '0'; }, 2200);
 }
+
+// AI assistant bubble on every logged-in page (not on the sign-in pages).
+(function jdLoadAssistant() {
+  try {
+    if (!localStorage.getItem('token')) return;
+    if (/\/(login|register|forgot-password)\.html$/.test(location.pathname)) return;
+    if (document.querySelector('script[data-jd-ai]')) return;
+    const s = document.createElement('script');
+    s.src = '/js/assistant.js';
+    s.defer = true;
+    s.setAttribute('data-jd-ai', '1');
+    document.head.appendChild(s);
+  } catch (e) { /* the assistant is optional - never break a page over it */ }
+})();
