@@ -31,6 +31,7 @@ const notificationRoutes = require('./routes/notifications');
 const spreadsheetRoutes = require('./routes/spreadsheet');
 const mediaRoutes = require('./routes/media');
 const advertRoutes = require('./routes/adverts');
+const assistantRoutes = require('./routes/assistant');
 const { customerRouter: customerStatsRoutes, driverRouter: driverStatsRoutes } = require('./routes/stats');
 const setupSupportSocket = require('./socket-support-events');
 const { notifyUser, notifyRole } = require('./utils/notify');
@@ -312,6 +313,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/spreadsheet', spreadsheetRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/adverts', advertRoutes);
+app.use('/api/assistant', assistantRoutes);
 app.use('/api/customer', customerStatsRoutes);
 app.use('/api/driver', driverStatsRoutes);
 
