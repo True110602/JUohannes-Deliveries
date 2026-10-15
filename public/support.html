@@ -458,7 +458,8 @@
     </div>
   </div>
 
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="/js/config.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     // ==========================================
     // GLOBALS
@@ -494,7 +495,7 @@
       currentUserRole = userRole || 'customer';
 
       // Initialize Socket.io connection to support namespace
-      socket = io('/support', {
+      socket = io((window.API_BASE || '') + '/support', {
         auth: { token }
       });
 
