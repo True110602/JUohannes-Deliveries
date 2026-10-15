@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const { authenticateToken } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const { storeUploadedImage } = require('../utils/imageUpload');
 
 // Any logged-in user's own account details. Previously there was no way
 // to view or edit this once registered - only the forgot-password flow
@@ -22,7 +22,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
   try {
     const { name, phone, address, profilePicUrl } = req.body;
     const update = {};
-    if (typeof name === 'string' && name.trim()) update.name = name.trim();
+    if (typeof name === 'string' && name.trim()) update.name = name.trim().slice(0, 100);
     if (typeof phone === 'string' && phone.trim()) update.phone = phone.trim();
     if (typeof address === 'string' && address.trim()) update.address = address.trim();
     // Unlike name/phone/address, an empty string here is a valid, meaningful
@@ -30,7 +30,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
     // not filtered out the same way a blank name would be.
     if (typeof profilePicUrl === 'string') {
       // Only our own uploads or a normal web link - blocks javascript:/data: URLs.
-      if (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/)/i.test(profilePicUrl)) {
+      if (profilePicUrl !== '' && !/^(https?:\/\/|\/uploads\/|\/api\/media\/)/i.test(profilePicUrl)) {
         return res.status(400).json({ success: false, message: 'Profile picture must be an uploaded image or an http(s) link.' });
       }
       update.profilePicUrl = profilePicUrl;
@@ -49,16 +49,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
 // merchant also uses uploads for catalog item photos), but customers,
 // drivers, and admins previously had no way to upload one at all even
 // though the User model has always had a profilePicUrl field.
-router.post('/upload-image', authenticateToken, (req, res) => {
-  upload.single('image')(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ success: false, message: err.message });
-    }
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No image file was uploaded.' });
-    }
-    res.json({ success: true, url: `/uploads/${req.file.filename}` });
-  });
+router.post('/upload-image', authenticateToken, async (req, res) => {
+  try {
+    const url = await storeUploadedImage(req, res);
+    res.json({ success: true, url });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, message: e.message });
+  }
 });
 
 // Changing a password while logged in - requires the current password,
@@ -79,7 +76,7 @@ router.patch('/password', authenticateToken, async (req, res) => {
 
     const matches = await bcrypt.compare(currentPassword, user.password);
     if (!matches) {
-      return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+      return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
