@@ -83,11 +83,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('upload').addEventListener('click', async () => {
     const file = $('adFile').files[0];
     if (!file) return JD.toast('Please choose a picture first');
-    if (file.size > 3 * 1024 * 1024) return JD.toast('That image is too large (maximum 3 MB)');
+    if (file.size > 25 * 1024 * 1024) return JD.toast('That image is too large');
     $('upload').disabled = true;
     $('upload').textContent = 'Uploading…';
     try {
-      const fd = new FormData(); fd.append('image', file);
+      const fd = new FormData(); fd.append('image', await JD.compressImage(file));
       const up = await JD.api('/api/media', { method: 'POST', form: fd });
       await JD.api('/api/adverts', { method: 'POST', body: { title: $('adTitle').value.trim(), imageUrl: up.url } });
       $('adTitle').value = ''; $('adFile').value = ''; $('preview').style.display = 'none';
