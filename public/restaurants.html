@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!items.length) { $('menu').innerHTML = JD.empty('📦', 'This shop has no items yet.'); return; }
     $('menu').innerHTML = items.map(i => `
       <div class="tile">
-        <div class="tile-img" style="${i.imageUrl ? `background-image:url('${JD.esc(i.imageUrl)}')` : ''}">${i.imageUrl ? '' : '📦'}</div>
+        <div class="tile-img" style="${i.imageUrl ? `background-image:url('${JD.esc(JD.asset(i.imageUrl))}')` : ''}">${i.imageUrl ? '' : '📦'}</div>
         <div class="tile-body">
           <div class="tile-name">${JD.esc(i.name)}</div>
           ${i.description ? `<div class="tile-meta">${JD.esc(i.description)}</div>` : ''}
