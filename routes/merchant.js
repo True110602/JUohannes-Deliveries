@@ -4,7 +4,7 @@ const User = require('../models/user');
 const CatalogItem = require('../models/CatalogItem');
 const Order = require('../models/Order');
 const { requireRole } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const { storeUploadedImage } = require('../utils/imageUpload');
 
 // Merchant's own profile - shop name, profile picture and bank/payout
 // details, persisted server-side so they follow the account across devices.
@@ -62,16 +62,13 @@ router.patch('/profile', ...requireRole('merchant'), async (req, res) => {
 // the merchant's device - drag/drop or file picker on the frontend. Returns
 // the URL to store on the profile or catalog item (e.g. via PATCH /profile
 // or POST /api/catalog).
-router.post('/upload-image', ...requireRole('merchant'), (req, res) => {
-  upload.single('image')(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ success: false, message: err.message || 'Upload failed.' });
-    }
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No image file was received.' });
-    }
-    res.json({ success: true, url: `/uploads/${req.file.filename}` });
-  });
+router.post('/upload-image', ...requireRole('merchant'), async (req, res) => {
+  try {
+    const url = await storeUploadedImage(req, res);
+    res.json({ success: true, url });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, message: e.message });
+  }
 });
 
 // Merchant's own items only (the public /api/catalog returns everyone's)
