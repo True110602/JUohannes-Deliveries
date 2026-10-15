@@ -114,10 +114,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('picFile').addEventListener('change', async () => {
     const file = $('picFile').files[0];
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) { $('picFile').value = ''; return JD.toast('That image is too large (maximum 3 MB)'); }
+    if (file.size > 25 * 1024 * 1024) { $('picFile').value = ''; return JD.toast('That image is too large'); }
     $('picFile').disabled = true;
     try {
-      const fd = new FormData(); fd.append('image', file);
+      const fd = new FormData(); fd.append('image', await JD.compressImage(file));
       const up = await JD.api('/api/media', { method: 'POST', form: fd });
       await JD.api('/api/merchant/profile', { method: 'PATCH', body: { profilePicUrl: up.url } });
       setPic(up.url);
