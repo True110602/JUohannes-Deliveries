@@ -6,6 +6,9 @@ const { requireRole } = require('../middleware/auth');
 
 // GET the list of shops (merchants with at least one catalog item), optionally
 // filtered by ?category=Food|Grocery|Pharmacy|Hardware|Other. Public.
+// Item pictures: nothing, a web link, or one of our own uploads.
+const validImageUrl = (u) => u === undefined || u === null || u === '' || (typeof u === 'string' && /^(https?:\/\/|\/uploads\/|\/api\/media\/[a-f0-9]{24}$)/i.test(u));
+
 const SHOP_CATEGORIES = ['Food', 'Grocery', 'Pharmacy', 'Hardware', 'Other'];
 
 router.get('/shops', async (req, res) => {
@@ -82,6 +85,7 @@ router.post('/', ...requireRole('merchant'), async (req, res) => {
     // just won't be visible to customers yet, since the GET routes above
     // already filter out anything from an unapproved merchant.
     const { name, price, description, imageUrl, optionGroups, category } = req.body;
+    if (!validImageUrl(imageUrl)) return res.status(400).json({ message: 'Picture must be an uploaded image or an http(s) link.' });
 
     const newItem = new CatalogItem({
       name,
@@ -127,6 +131,7 @@ router.patch('/:id', ...requireRole('merchant'), async (req, res) => {
     }
 
     const { name, price, description, imageUrl, optionGroups, category } = req.body;
+    if (!validImageUrl(imageUrl)) return res.status(400).json({ message: 'Picture must be an uploaded image or an http(s) link.' });
     if (category !== undefined) item.category = category;
     if (name !== undefined) item.name = name;
     if (price !== undefined) item.price = price;
