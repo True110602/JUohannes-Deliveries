@@ -275,6 +275,7 @@
         if (data.success) {
           // Store token
           localStorage.setItem('token', data.token);
+          try { localStorage.setItem('userName', payload.name); localStorage.setItem('userNameFor', payload.email); localStorage.setItem('userEmail', payload.email); } catch (e) {}
           
           // Show success message
           successMsg.textContent = '✅ Account created successfully! Redirecting...';
