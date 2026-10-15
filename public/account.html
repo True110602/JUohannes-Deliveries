@@ -104,11 +104,16 @@
       </div>
       <div class="form-group">
         <label class="form-label">Email</label>
-        <input type="email" id="email" class="form-input" placeholder="you@example.com">
+        <input type="email" id="email" class="form-input" placeholder="you@example.com" readonly style="background:#f5f5f5">
+        <div style="font-size:12px;color:#999;margin-top:4px">Your email is your login and can't be changed here.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Phone Number</label>
         <input type="tel" id="phone" class="form-input" placeholder="+263 712 345 678">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input type="text" id="address" class="form-input" placeholder="Your delivery address">
       </div>
       <button type="submit" class="btn">Save Changes</button>
     </form>
@@ -173,60 +178,82 @@
     </div>
   </div>
 
-  <!-- Danger Zone -->
-  <div class="card" style="border: 2px solid #f5e6e6;">
-    <h2 class="card-title" style="color: #e74c3c;">⚠️ Danger Zone</h2>
-    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">These actions cannot be undone.</p>
-    <button onclick="if(confirm('Are you sure? This will permanently delete your account.')) { deleteAccount(); }" class="btn btn-danger">Delete Account</button>
+  <!-- Session -->
+  <div class="card">
+    <h2 class="card-title">🚪 Session</h2>
+    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Sign out of this device. To delete your account, please contact support.</p>
+    <button onclick="signOut()" class="btn btn-danger">Sign Out</button>
   </div>
 
 </main>
 
+<script src="/js/config.js"></script>
 <script src="/js/menu.js"></script>
+<script src="/js/page.js"></script>
 <script>
-  // ACCOUNT SETTINGS SCRIPT
+  const $ = (id) => document.getElementById(id);
 
-  document.addEventListener('DOMContentLoaded', () => {
-    loadUserInfo();
+  document.addEventListener('DOMContentLoaded', async () => {
+    if (!JD.guard()) return;
     loadPreferences();
+    try {
+      const { user } = await JD.api('/api/account/me');
+      fillProfile(user);
+    } catch (e) { JD.toast(e.message); }
   });
 
-  function loadUserInfo() {
-    const email = localStorage.getItem('userEmail') || 'user@example.com';
-    const name = email.split('@')[0];
-    const initials = name.substring(0, 2).toUpperCase();
-    
-    document.getElementById('userName').textContent = name;
-    document.getElementById('userEmail').textContent = email;
-    document.getElementById('userAvatar').textContent = initials;
-    document.getElementById('email').value = email;
+  function splitName(full) {
+    const t = (full || '').trim(); const i = t.indexOf(' ');
+    return i < 0 ? [t, ''] : [t.slice(0, i), t.slice(i + 1).trim()];
+  }
+
+  // Fill the form from the saved account and keep the sidebar + cache in step.
+  function fillProfile(u) {
+    const [first, last] = splitName(u.name);
+    $('firstName').value = first;
+    $('lastName').value = last;
+    $('email').value = u.email || '';
+    $('phone').value = u.phone || '';
+    $('address').value = u.address || '';
+    $('userEmail').textContent = u.email || '';
+    try { localStorage.setItem('userName', u.name); localStorage.setItem('userNameFor', u.email); localStorage.setItem('userEmail', u.email); } catch (e) {}
+    jdApplyProfile(u.name);
   }
 
   function loadPreferences() {
-    document.getElementById('emailNotif').checked = localStorage.getItem('emailNotif') !== 'false';
-    document.getElementById('smsNotif').checked = localStorage.getItem('smsNotif') === 'true';
-    document.getElementById('newsletter').checked = localStorage.getItem('newsletter') === 'true';
+    $('emailNotif').checked = localStorage.getItem('emailNotif') !== 'false';
+    $('smsNotif').checked = localStorage.getItem('smsNotif') === 'true';
+    $('newsletter').checked = localStorage.getItem('newsletter') === 'true';
   }
 
-  document.getElementById('profileForm').addEventListener('submit', async (e) => {
+  $('profileForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    alert('Profile updated!');
-    // Handle profile update
+    const name = ($('firstName').value.trim() + ' ' + $('lastName').value.trim()).trim();
+    if (!name) return JD.toast('Please enter your name');
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const { user } = await JD.api('/api/account/me', { method: 'PATCH', body: { name, phone: $('phone').value.trim(), address: $('address').value.trim() } });
+      fillProfile(user);
+      JD.toast('Profile saved');
+    } catch (err) { JD.toast(err.message); }
+    btn.disabled = false;
   });
 
-  document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+  $('passwordForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const current = document.getElementById('currentPassword').value;
-    const newPwd = document.getElementById('newPassword').value;
-    const confirm = document.getElementById('confirmPassword').value;
-    
-    if (newPwd !== confirm) {
-      alert('Passwords do not match');
-      return;
-    }
-    
-    alert('Password updated!');
-    document.getElementById('passwordForm').reset();
+    const currentPassword = $('currentPassword').value;
+    const newPassword = $('newPassword').value;
+    if (newPassword !== $('confirmPassword').value) return JD.toast('New passwords do not match');
+    if (newPassword.length < 6) return JD.toast('New password must be at least 6 characters');
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      await JD.api('/api/account/password', { method: 'PATCH', body: { currentPassword, newPassword } });
+      $('passwordForm').reset();
+      JD.toast('Password updated');
+    } catch (err) { JD.toast(err.message); }
+    btn.disabled = false;
   });
 
   document.addEventListener('change', (e) => {
@@ -235,11 +262,10 @@
     if (e.target.id === 'newsletter') localStorage.setItem('newsletter', e.target.checked);
   });
 
-  function deleteAccount() {
-    localStorage.clear();
+  function signOut() {
+    try { ['token', 'userName', 'userNameFor', 'userEmail'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
     window.location.href = 'login.html';
   }
 </script>
-
 </body>
 </html>
