@@ -18,6 +18,47 @@ function jdGetSession() {
   }
 }
 
+// The login token only carries the email, so pages used to show the email's first part
+// as the user's name. Fetch the real account name once, cache it, and show it everywhere.
+function jdInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '??';
+  return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2)).toUpperCase();
+}
+
+function jdApplyProfile(name) {
+  if (!name) return;
+  document.querySelectorAll('#userName, .sidebar-user-info h3').forEach(el => { el.textContent = name; });
+  document.querySelectorAll('#userAvatar, .sidebar-user-avatar').forEach(el => { if (!el.querySelector('img')) el.textContent = jdInitials(name); });
+}
+
+async function jdHydrateProfile() {
+  let token = null, tokenEmail = '';
+  try {
+    token = localStorage.getItem('token');
+    if (!token) return;
+    tokenEmail = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || '';
+  } catch (e) { return; }
+  try { // show the saved name straight away (only if it belongs to the person logged in now)
+    if (localStorage.getItem('userNameFor') === tokenEmail) jdApplyProfile(localStorage.getItem('userName'));
+  } catch (e) {}
+  try {
+    const res = await fetch((window.API_BASE || '') + '/api/account/me', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.user && data.user.name) {
+      try {
+        localStorage.setItem('userName', data.user.name);
+        localStorage.setItem('userNameFor', data.user.email || tokenEmail);
+        if (data.user.email) localStorage.setItem('userEmail', data.user.email);
+      } catch (e) {}
+      jdApplyProfile(data.user.name);
+    }
+  } catch (e) { /* offline - keep whatever is already shown */ }
+}
+// 'load' fires after each page's own DOMContentLoaded code, so the real name wins over the email-prefix fallback.
+window.addEventListener('load', jdHydrateProfile);
+
 function jdBuildMenuItems(session) {
   const link = (href, icon, label) =>
     `<li class="menu-item"><a href="${href}" class="menu-link"><span class="menu-icon">${icon}</span>${label}</a></li>`;
@@ -216,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // sees the valid token and sends the user straight back in.
   document.addEventListener('click', (e) => {
     if (e.target.closest('.sidebar-footer-link.logout')) {
-      try { localStorage.removeItem('token'); } catch (err) {}
+      try { ['token', 'userName', 'userNameFor', 'userEmail'].forEach(k => localStorage.removeItem(k)); } catch (err) {}
     }
   });
 
