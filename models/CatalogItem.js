@@ -10,11 +10,14 @@ const catalogItemSchema = new mongoose.Schema({
   price: { type: Number, required: true, default: 0 },
   description: { type: String, default: '' },
   imageUrl: { type: String, default: '' },
-  // NEW: Category for Logistics Hub (Food, Grocery, Pharmacy, Hardware, Other)
-  category: { type: String, default: 'Other' }, 
+  category: { type: String, default: 'Other' },
   optionGroups: { type: [optionGroupSchema], default: [] },
   inStock: { type: Boolean, default: true },
-  merchantEmail: { type: String, required: true }
+  merchantEmail: { type: String, required: true },
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  approvedBy: { type: String, default: null },
+  approvalDate: { type: Date, default: null },
+  rejectionReason: { type: String, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('CatalogItem', catalogItemSchema);
