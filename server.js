@@ -167,6 +167,12 @@ function getRedirectUrlByRole(role) {
   }
 }
 
+// --- HOME PAGE ROUTE ---
+// Guest landing page - no authentication required
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
+});
+
 app.get('/api/map-config', (req, res) => {
   const maptilerKey = process.env.MAPTILER_API_KEY;
   if (maptilerKey) {
