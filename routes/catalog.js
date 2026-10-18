@@ -59,7 +59,7 @@ router.get('/shops', async (req, res) => {
 // this is what the customer app uses once a shop has been picked.
 router.get('/', async (req, res) => {
   try {
-    const filter = {};
+    const filter = { approvalStatus: 'approved' }; // Only show approved items to customers
     if (req.query.merchant) {
       filter.merchantEmail = req.query.merchant;
     }
