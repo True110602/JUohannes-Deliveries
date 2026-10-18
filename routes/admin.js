@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/user');
 const DriverLocation = require('../models/DriverLocation');
 const Order = require('../models/Order');
+const CatalogItem = require('../models/CatalogItem');
 const { requireRole } = require('../middleware/auth');
 const { notifyUser } = require('../utils/notify');
 
@@ -186,6 +187,71 @@ router.get('/stats', ...requireRole('admin'), async (req, res) => {
   } catch (err) {
     console.error('Error fetching stats:', err);
     res.status(500).json({ success: false, message: 'Error fetching statistics', error: err.message });
+  }
+});
+
+// ==========================================
+// MENU ITEM APPROVAL SYSTEM
+// ==========================================
+
+// Get all pending menu items for admin review
+router.get('/menu-items/pending', ...requireRole('admin'), async (req, res) => {
+  try {
+    const items = await CatalogItem.find({ approvalStatus: 'pending' })
+      .select('_id name price description imageUrl merchantEmail createdAt')
+      .sort({ createdAt: 1 });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get all menu items with their approval status
+router.get('/menu-items', ...requireRole('admin'), async (req, res) => {
+  try {
+    const items = await CatalogItem.find()
+      .select('_id name price merchantEmail approvalStatus approvedBy approvalDate')
+      .sort({ createdAt: -1 });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Approve a menu item
+router.patch('/menu-items/:id/approve', ...requireRole('admin'), async (req, res) => {
+  try {
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+
+    item.approvalStatus = 'approved';
+    item.approvedBy = req.user.email;
+    item.approvalDate = new Date();
+    item.rejectionReason = null;
+    await item.save();
+
+    res.json({ success: true, message: 'Menu item approved', item });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reject a menu item
+router.patch('/menu-items/:id/reject', ...requireRole('admin'), async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const item = await CatalogItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+
+    item.approvalStatus = 'rejected';
+    item.rejectionReason = reason || 'No reason provided';
+    item.approvedBy = null;
+    item.approvalDate = null;
+    await item.save();
+
+    res.json({ success: true, message: 'Menu item rejected', item });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
