@@ -108,7 +108,7 @@ const EMAIL_CONFIGURED = !!resendClient;
 // Must be an address on a domain verified in Resend. Until then, Resend's test
 // sender only delivers to the email address your Resend account was created with.
 // Either EMAIL_FROM or RESEND_FROM_EMAIL may be set in Render's Environment tab.
-const EMAIL_FROM = process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'Johannes Deliveries <onboarding@resend.dev>';
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'Mr L <onboarding@resend.dev>';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 let paynow = null;
@@ -268,7 +268,7 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
       const { error: sendError } = await resendClient.emails.send({
         from: EMAIL_FROM,
         to: validated.email,
-        subject: 'Password Reset Verification Code - Johannes Deliveries',
+        subject: 'Password Reset Verification Code - Mr L',
         html: `<h2 style="font-family: sans-serif;">Password Reset Request</h2><p style="font-family: sans-serif;">Your password reset code is:</p><h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3><p style="font-family: sans-serif;"><strong>This code will expire in 15 minutes.</strong></p>`
       });
       if (sendError) console.error('Resend rejected the password reset email:', sendError);
