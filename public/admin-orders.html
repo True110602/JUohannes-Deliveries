@@ -1,16 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF, viewport" content="width=device-width, initial-scale=1.0">
-  <title>Orders - JUohannes Logistics</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders - Mr L</title>
   <link rel="stylesheet" href="/css/menu.css">
   <link rel="stylesheet" href="/css/pages.css">
 </head>
 <body>
 
 <main class="main-content">
-  <h1 class="page-title">Order Management 📦</h1>
-  <p class="page-sub">Every order on the platform — assign couriers and track progress.</p>
+  <h1 class="page-title">Orders 📦</h1>
+  <p class="page-sub">Every order on the platform — assign drivers and keep things moving.</p>
   <div class="toolbar">
     <input type="search" id="search" class="grow" placeholder="Search customer, address, shop or order #…">
     <select id="status"><option value="">All statuses</option><option value="pending">Pending</option><option value="assigned">Assigned</option><option value="picked_up">Picked up</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option><option value="failed">Failed</option></select>
@@ -22,20 +23,15 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
+
 document.addEventListener('DOMContentLoaded', async () => {
   if (!JD.guard('admin')) return;
   const $ = (id) => document.getElementById(id);
   let orders = [], drivers = [];
   if (JD.param('status')) $('status').value = JD.param('status');
 
-  const shop = (o) => {
-    if (o.orderType === 'parcel') return '📦 Parcel Service';
-    return (o.lineItems && o.lineItems[0] && o.lineItems[0].merchantEmail) || o.pickup || '';
-  };
-  const items = (o) => {
-    if (o.orderType === 'parcel') return `📦 ${JD.esc(o.parcelDetails || 'Package')}`;
-    return o.lineItems && o.lineItems.length ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}`).join(', ') : JD.esc(o.item || '');
-  };
+  const shop = (o) => (o.lineItems && o.lineItems[0] && o.lineItems[0].merchantEmail) || o.pickup || '';
+  const items = (o) => o.lineItems && o.lineItems.length ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}`).join(', ') : JD.esc(o.item || '');
 
   function draw() {
     const q = $('search').value.trim().toLowerCase();
@@ -56,11 +52,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div>🏪 ${JD.esc(shop(o))}</div>
           <div>🛒 ${items(o)}</div>
           <div>📍 ${JD.esc(o.dropoff)}</div>
-          <div>💳 ${JD.esc(o.paymentMethod || 'Cash')}</div>
-          <div>🚗 ${o.assignedDriver ? JD.esc(o.assignedDriver) : 'No courier assigned'}</div>
+          <div>💳 ${JD.esc(o.paymentMethod || 'Cash')}${o.paymentStatus && o.paymentStatus !== 'n/a' ? ' · ' + JD.esc(String(o.paymentStatus).replace(/_/g, ' ')) : ''}</div>
+          <div>🚗 ${o.assignedDriver ? JD.esc(o.assignedDriver) + (o.driverAccepted === null && o.status === 'assigned' ? ' <span class="badge pending">awaiting response</span>' : o.driverAccepted ? ' <span class="badge ok">accepted</span>' : '') : '<i>No driver</i>'}</div>
         </div>
         <div class="btn-row" style="align-items:center">
-          ${canAssign ? `<select data-driver style="width:auto;min-width:200px"><option value="">Choose courier…</option>${drivers.map(d => `<option ${d === o.assignedDriver ? 'selected' : ''}>${JD.esc(d)}</option>`).join('')}</select>
+          ${canAssign ? `<select data-driver style="width:auto;min-width:200px"><option value="">Choose driver…</option>${drivers.map(d => `<option ${d === o.assignedDriver ? 'selected' : ''}>${JD.esc(d)}</option>`).join('')}</select>
             <button class="btn btn-sm" data-assign>${o.assignedDriver ? 'Reassign' : 'Assign'}</button>` : ''}
           ${o.status === 'assigned' ? '<button class="btn btn-sm btn-secondary" data-status="pending">Unassign</button>' : ''}
           ${['pending', 'assigned', 'picked_up'].includes(o.status) ? '<button class="btn btn-sm btn-danger" data-status="cancelled">Cancel order</button>' : ''}
@@ -85,21 +81,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (btn.hasAttribute('data-assign')) {
         const driverEmail = card.querySelector('[data-driver]').value;
         if (!driverEmail) return JD.toast('Choose a driver first');
+        btn.disabled = true;
         await JD.api(`/api/orders/${id}/assign`, { method: 'PATCH', body: { driverEmail } });
-        JD.toast('Courier assigned');
+        JD.toast('Driver assigned');
       } else {
-        const status = btn.dataset.status;
-        await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', body: { status } });
+        if (btn.dataset.status === 'cancelled' && !confirm('Cancel this order?')) return;
+        btn.disabled = true;
+        await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', body: { status: btn.dataset.status } });
         JD.toast('Order updated');
       }
       await load();
-    } catch (err) { JD.toast(err.message); }
+    } catch (err) { JD.toast(err.message); btn.disabled = false; }
   });
 
   $('search').addEventListener('input', draw);
   $('status').addEventListener('change', draw);
   load();
 });
+
 </script>
 </body>
 </html>
