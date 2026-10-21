@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wallet - JUohannes Logistics Hub</title>
+  <title>Wallet - Mr L</title>
   <link rel="stylesheet" href="/css/menu.css">
   <link rel="stylesheet" href="/css/pages.css">
 </head>
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('copy').onclick = async () => { try { await navigator.clipboard.writeText(codeEl.value); JD.toast('Code copied'); } catch (e) { codeEl.select(); JD.toast('Press Ctrl+C to copy'); } };
     document.getElementById('share').onclick = async () => {
-      const text = `Join me on JUohannes Logistics Hub — use my code ${codeEl.value} when you sign up.`;
+      const text = `Join me on Mr L — use my code ${codeEl.value} when you sign up.`;
       if (navigator.share) { try { await navigator.share({ text }); } catch (e) {} }
       else { try { await navigator.clipboard.writeText(text); JD.toast('Invite message copied'); } catch (e) { JD.toast(text); } }
     };
