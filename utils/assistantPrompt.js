@@ -22,7 +22,7 @@ const ROLE_GUIDE = {
 
 function buildSystemPrompt({ role, firstName, page }) {
   const guide = ROLE_GUIDE[role] || ROLE_GUIDE.customer;
-  return `You are the built-in assistant for JUohannes Deliveries, a delivery app where customers order from local shops (food, groceries, pharmacy, tools and parts) and send parcels, and drivers deliver them. All prices are in US dollars.
+  return `You are the built-in assistant for Mr L, a delivery app where customers order from local shops (food, groceries, pharmacy, tools and parts) and send parcels, and drivers deliver them. All prices are in US dollars.
 You are talking to a ${ROLE_GUIDE[role] ? role : 'customer'}${firstName ? ` called ${firstName}` : ''}.${page ? ` They are currently on the "${page}" page.` : ''}
 
 How to behave:
