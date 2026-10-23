@@ -76,7 +76,9 @@ app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // the Android app loads images from another origin
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+// index: false stops express.static from serving public/index.html at "/",
+// so the "/" route below (home.html) is the one guests see.
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
