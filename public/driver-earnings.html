@@ -11,7 +11,7 @@
 
 <main class="main-content">
   <h1 class="page-title">Earnings 💰</h1>
-  <p class="page-sub">What you’ve earned from deliveries — distance-based fees plus 100% of tips.</p>
+  <p class="page-sub">Your courier earnings — distance-based fees plus 100% of tips.</p>
   <div class="stat-grid" id="stats"></div>
   <div class="card"><h2>Last 7 days</h2><div id="chart"></div></div>
   <div class="card"><h2>Completed deliveries</h2><div id="list"><div class="empty">Loading…</div></div></div>
@@ -21,7 +21,6 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
-
 document.addEventListener('DOMContentLoaded', async () => {
   if (!JD.guard('driver')) return;
   try {
@@ -32,7 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const earn = (o) => o.driverCommission || 0;
     const sum = (rows) => rows.reduce((s, o) => s + earn(o), 0);
 
-    const startOf = (daysAgo) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - daysAgo); return d; };
+    const startOf = (daysAgo) => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - daysAgo); return d; };
     const today = done.filter(o => o.when >= startOf(0));
     const week = done.filter(o => o.when >= startOf(6));
     const month = done.filter(o => o.when >= startOf(29));
@@ -44,8 +43,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       JD.statCard('Last 7 days', JD.money(sum(week)), week.length + ' deliveries') +
       JD.statCard('Last 30 days', JD.money(sum(month)), month.length + ' deliveries') +
       JD.statCard('All time', JD.money(sum(done)), done.length + ' deliveries') +
-      JD.statCard('Tips', JD.money(tips), 'Yours in full') +
-      JD.statCard('Distance', km.toFixed(1) + ' km', 'Shop to drop-off');
+      JD.statCard('Tips', JD.money(tips), '100% yours') +
+      JD.statCard('Distance', km.toFixed(1) + ' km', 'Total travelled');
 
     const days = JD.lastDays(7);
     const byDay = Object.fromEntries(days.map(d => [d.key, 0]));
@@ -60,10 +59,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       { h: 'Fee', f: o => JD.money(o.deliveryFee) },
       { h: 'Tip', f: o => JD.money(o.tip) },
       { h: 'Earned', f: o => '<b>' + JD.money(earn(o)) + '</b>' }
-    ], done) : JD.empty('💰', 'Your earnings will show up after your first delivery.');
+    ], done) : JD.empty('💰', 'Earnings will appear after your first delivery.');
   } catch (e) { JD.fail(e, document.getElementById('list')); }
 });
-
 </script>
 </body>
 </html>
