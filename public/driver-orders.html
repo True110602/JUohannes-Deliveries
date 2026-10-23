@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Deliveries - JUohannes Logistics</title>
+  <title>Driver Orders - Mr L</title>
   <link rel="stylesheet" href="/css/menu.css">
   <link rel="stylesheet" href="/css/pages.css">
 </head>
@@ -11,7 +11,7 @@
 
 <main class="main-content">
   <h1 class="page-title">My Deliveries 🚗</h1>
-  <p class="page-sub">Accept new courier jobs, update deliveries, and track your history.</p>
+  <p class="page-sub">Accept new jobs, update deliveries as you go, and look back at past ones.</p>
   <div id="tabs"></div>
   <div id="list"><div class="empty">Loading…</div></div>
 </main>
@@ -20,11 +20,13 @@
 <script src="/js/menu.js"></script>
 <script src="/js/page.js"></script>
 <script>
+
 document.addEventListener('DOMContentLoaded', async () => {
   if (!JD.guard('driver')) return;
   let orders = [];
   let tab = ['active', 'available', 'history'].includes(JD.param('tab')) ? JD.param('tab') : 'active';
 
+  // available = assigned to me but I haven't accepted yet; active = accepted and not finished
   const isAvailable = (o) => o.status === 'assigned' && o.driverAccepted === null;
   const isActive = (o) => (o.status === 'assigned' && o.driverAccepted === true) || o.status === 'picked_up';
   const isHistory = (o) => ['delivered', 'failed', 'cancelled'].includes(o.status);
@@ -33,10 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     [{ id: 'active', label: 'Active' }, { id: 'available', label: 'Available' }, { id: 'history', label: 'History' }],
     tab, (id) => { tab = id; draw(); });
 
-  const items = (o) => {
-    if (o.orderType === 'parcel') return `📦 ${JD.esc(o.parcelDetails || 'Package')}`;
-    return o.lineItems && o.lineItems.length ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}`).join(', ') : JD.esc(o.item || 'General Order');
-  };
+  const items = (o) => o.lineItems && o.lineItems.length ? o.lineItems.map(l => `${l.quantity}× ${JD.esc(l.name)}`).join(', ') : JD.esc(o.item || 'Order');
 
   function card(o) {
     const earn = o.driverCommission || 0;
@@ -46,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div style="text-align:right"><div class="order-price">${JD.money(earn)}</div><div class="tile-meta">you earn</div>${JD.badge(o.status)}</div>
       </div>
       <div class="order-body">
-        <div>${o.orderType === 'parcel' ? '📍' : '🏪'} Pick up: ${JD.esc(o.pickup)}</div>
+        <div>🏪 Pick up: ${JD.esc(o.pickup)}</div>
         <div>📍 Drop off: ${JD.esc(o.dropoff)}${o.distanceKm ? ` <span class="tile-meta">(${Number(o.distanceKm).toFixed(1)} km)</span>` : ''}</div>
         <div>🛒 ${items(o)}</div>
         <div>💳 ${JD.esc(o.paymentMethod || 'Cash')}${o.paymentMethod === 'Cash' ? ` — collect <b>${JD.money((o.amount || 0) + (o.deliveryFee || 0) + (o.tip || 0))}</b>` : ''}</div>
@@ -67,7 +66,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rows = orders.filter(tab === 'active' ? isActive : tab === 'available' ? isAvailable : isHistory);
     const el = document.getElementById('list');
     if (!rows.length) {
-      el.innerHTML = tab === 'active' ? JD.empty('🚗', 'No active deliveries.') : tab === 'available' ? JD.empty('📋', 'No new jobs available.') : JD.empty('📈', 'No history yet.');
+      el.innerHTML = tab === 'active' ? JD.empty('🚗', 'No active deliveries right now.')
+        : tab === 'available' ? JD.empty('📋', 'No new jobs waiting for your response.')
+        : JD.empty('📈', 'Completed deliveries will appear here.');
       return;
     }
     el.innerHTML = rows.map(card).join('');
@@ -93,12 +94,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btn.dataset.accept === '1') { tab = 'active'; tabsUi.set('active'); }
       } else {
         const status = btn.dataset.status;
-        if (status === 'failed' && !confirm('Mark as failed?')) { btn.disabled = false; return; }
+        if (status === 'failed' && !confirm('Mark this delivery as failed?')) { btn.disabled = false; return; }
         const photo = btn.closest('.order-card').querySelector('[data-photo]')?.files[0];
         if (photo && status !== 'failed') {
           const fd = new FormData(); fd.append('status', status); fd.append('photo', photo);
           await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', form: fd });
-        } else { await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', body: { status } }); }
+        } else {
+          await JD.api(`/api/orders/${id}/status`, { method: 'PATCH', body: { status } });
+        }
         JD.toast('Updated');
       }
       await load();
@@ -107,6 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   load();
 });
+
 </script>
 </body>
 </html>
