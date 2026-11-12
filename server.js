@@ -8,6 +8,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend'); 
+const Paynow = require('paynow');
 const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -125,7 +126,7 @@ app.set('emailConfigured', EMAIL_CONFIGURED);
 
 const RegisterSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  email: z.string().trim().toLowerCase().pipe(z.string().email("Invalid email format")).or(z.string().min(1)),
+  email: z.string().trim().toLowerCase().email("Invalid email format"),
   phone: z.string().trim().min(1, "Phone is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   address: z.string().trim().min(1, "Address is required"),
@@ -271,7 +272,7 @@ app.post('/api/request-password-reset', passwordResetLimiter, async (req, res) =
         from: EMAIL_FROM,
         to: validated.email,
         subject: 'Password Reset Verification Code - Mr L',
-        html: `<h2 style="font-family: sans-serif;">Password Reset Request</h2><p style="font-family: sans-serif;">Your password reset code is:</p><h3 style="font-size: 24px; font-family: monospace; color: #667eea;">${resetCode}</h3><p style="font-family: sans-serif;"><strong>This code will expire in 15 minutes.</strong></p>`
+        html: `<h2 style="font-family: sans-serif;">Password Reset Request</h2><p style="font-family: sans-serif;">Your password reset code is:</p><h3 style="font-size: 24px; font-family: monospace;">${resetCode}</h3><p style="font-family: sans-serif;">This code expires in 15 minutes.</p>`
       });
       if (sendError) console.error('Resend rejected the password reset email:', sendError);
     }
